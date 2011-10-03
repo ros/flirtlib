@@ -1,0 +1,12 @@
+<package>
+  <description brief="flirtlib">
+Pulls in the 3rd party flirtlib package
+  </description>
+  <author>Bhaskara Marthi, Gian Diego Tipaldi</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/flirtlib</url>
+
+</package>
+
+
