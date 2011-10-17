@@ -40,13 +40,15 @@
 #define FLIRTLIB_ROS_CONVERSIONS_H
 
 #include <sensor_msgs/LaserScan.h>
+#include <geometry_msgs/Pose.h>
 #include <sensors/LaserReading.h>
 
 namespace flirtlib_ros
 {
 
 /// Convert a ROS laser scan message to a flirtlib scan
-boost::shared_ptr<LaserReading> fromRos(const sensor_msgs::LaserScan& scan);
+boost::shared_ptr<LaserReading> fromRos(const sensor_msgs::LaserScan& scan,
+                                        const geometry_msgs::Pose& laser_pose);
 
 
 } // namespace

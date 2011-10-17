@@ -34,3 +34,10 @@ rosbuild_add_library(flirtlib_ros
 
 rosbuild_add_executable(ransac_test src/RansacLoopClosureTest.cpp)
 target_link_libraries(ransac_test feature sensorstream sensors utils)
+
+rosbuild_add_executable(flirtlib_ros_test src/flirtlib_ros_test.cpp)
+target_link_libraries(flirtlib_ros_test feature sensorstream sensors utils)
+target_link_libraries(flirtlib_ros_test grid_utils)
+target_link_libraries(flirtlib_ros_test flirtlib_ros)
+
+rosbuild_add_executable(markers src/interactive_markers.cpp)

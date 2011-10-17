@@ -12,7 +12,8 @@ ROS wrapper for FLIRTLib 3rd party package
   <depend package="occupancy_grid_utils"/>
   <depend package="tf"/>
   <depend package="roscpp"/>
-
+  <depend package="interactive_markers"/>
+  
 </package>
 
 

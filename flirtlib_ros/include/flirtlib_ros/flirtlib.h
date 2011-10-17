@@ -31,40 +31,27 @@
 /**
  * \file 
  * 
- * Implementation for conversions.h
+ * Collects together all includes for flirtlib
  *
  * \author Bhaskara Marthi
  */
 
-#include <flirtlib_ros/conversions.h>
-#include <tf/transform_datatypes.h>
+#ifndef FLIRTLIB_ROS_FLIRTLIB_H
+#define FLIRTLIB_ROS_FLIRTLIB_H
 
-namespace sm=sensor_msgs;
-namespace gm=geometry_msgs;
-typedef boost::shared_ptr<LaserReading> LaserPtr;
-typedef std::vector<double> DoubleVec;
+#include <feature/Detector.h>
+#include <feature/ShapeContext.h>
+#include <feature/BetaGrid.h>
+#include <feature/RangeDetector.h>
+#include <feature/CurvatureDetector.h>
+#include <feature/NormalBlobDetector.h>
+#include <feature/NormalEdgeDetector.h>
+#include <feature/RansacFeatureSetMatcher.h>
+#include <feature/RansacMultiFeatureSetMatcher.h>
+#include <sensorstream/CarmenLog.h>
+#include <sensorstream/LogSensorStream.h>
+#include <sensorstream/SensorStream.h>
+#include <utils/SimpleMinMaxPeakFinder.h>
+#include <utils/HistogramDistances.h>
 
-namespace flirtlib_ros
-{
-
-/// Convert a ROS laser scan message to a flirtlib scan
-LaserPtr fromRos(const sm::LaserScan& m, const gm::Pose& laser_pose)
-{
-  const unsigned n = m.ranges.size();
-  DoubleVec angles(n);
-  DoubleVec ranges(n);
-  for (unsigned i=0; i<n; i++)
-  {
-    angles[i] = m.angle_min + i*m.angle_increment;
-    ranges[i] = m.ranges[i];
-  }
-  LaserPtr reading(new LaserReading(angles, ranges, m.header.stamp.toSec(),
-                                    "ros_laser", "ros_robot"));
-  OrientedPoint2D pose(laser_pose.position.x, laser_pose.position.y,
-                       tf::getYaw(laser_pose.orientation));
-  reading->setLaserPose(pose);
-  return reading;
-}
-
-
-} // namespace
+#endif // include guard
