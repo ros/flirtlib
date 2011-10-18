@@ -47,8 +47,7 @@ namespace flirtlib_ros
 {
 
 /// Convert a ROS laser scan message to a flirtlib scan
-boost::shared_ptr<LaserReading> fromRos(const sensor_msgs::LaserScan& scan,
-                                        const geometry_msgs::Pose& laser_pose);
+boost::shared_ptr<LaserReading> fromRos(const sensor_msgs::LaserScan& scan);
 
 
 } // namespace

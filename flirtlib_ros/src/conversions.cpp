@@ -48,7 +48,7 @@ namespace flirtlib_ros
 {
 
 /// Convert a ROS laser scan message to a flirtlib scan
-LaserPtr fromRos(const sm::LaserScan& m, const gm::Pose& laser_pose)
+LaserPtr fromRos(const sm::LaserScan& m)
 {
   const unsigned n = m.ranges.size();
   DoubleVec angles(n);
@@ -60,9 +60,6 @@ LaserPtr fromRos(const sm::LaserScan& m, const gm::Pose& laser_pose)
   }
   LaserPtr reading(new LaserReading(angles, ranges, m.header.stamp.toSec(),
                                     "ros_laser", "ros_robot"));
-  OrientedPoint2D pose(laser_pose.position.x, laser_pose.position.y,
-                       tf::getYaw(laser_pose.orientation));
-  reading->setLaserPose(pose);
   return reading;
 }
 

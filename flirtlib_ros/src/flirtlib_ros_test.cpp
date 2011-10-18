@@ -65,7 +65,9 @@ typedef vector<InterestPoint*> InterestPointVec;
 namespace flirtlib_ros
 {
 
-
+/************************************************************
+ * Node class
+ ***********************************************************/
 
 class Node
 {
@@ -76,18 +78,26 @@ public:
 
 private:
 
-  ros::NodeHandle nh_;
+  // Needed during initialization
   boost::mutex mutex_;
-  
+  ros::NodeHandle nh_;
+
+  // Parameters
   const string map_file_;
   const double resolution_;
-  nm::OccupancyGrid::Ptr grid_;
   const sm::LaserScan scanner_params_;
 
+  // State
+  nm::OccupancyGrid::Ptr grid_;
+
+  // Flirtlib objects
   boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
   boost::shared_ptr<HistogramDistance<double> > histogram_dist_;
   boost::shared_ptr<Detector> detector_;
   boost::shared_ptr<DescriptorGenerator> descriptor_;
+  boost::shared_ptr<RansacFeatureSetMatcher> ransac_;
+  
+  // Ros objects
   ros::Publisher scan_pubs_[2];
   ros::Publisher grid_pub_;
   ros::Publisher marker_pub_;
@@ -95,6 +105,12 @@ private:
   ros::Timer exec_timer_;
 
 };
+
+
+/************************************************************
+ * Initialization
+ ***********************************************************/
+
 
 template <class T>
 T getPrivateParam (const string& name, const T& default_val)
@@ -162,12 +178,17 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
 Node::Node () :
   map_file_(getPrivateParam<string>("map_file")),
   resolution_(getPrivateParam<double>("resolution")),
-  grid_(gu::loadGrid(map_file_, resolution_)),
   scanner_params_(getScannerParams()),
+
+  grid_(gu::loadGrid(map_file_, resolution_)),
+
   peak_finder_(createPeakFinder()),
   histogram_dist_(new EuclideanDistance<double>()),
   detector_(createDetector(peak_finder_.get())),
   descriptor_(createDescriptor(histogram_dist_.get())),
+  ransac_(new RansacMultiFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
+                                           0.0384, false)),
+
   grid_pub_(nh_.advertise<nm::OccupancyGrid>("grid", 10, true)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   exec_timer_(nh_.createTimer(ros::Duration(0.2), &Node::mainLoop, this))
@@ -198,6 +219,12 @@ ColorVec initColors ()
   return colors;
 }
 
+
+/************************************************************
+ * Visualization
+ ***********************************************************/
+
+
 // Generate visualization markers for the interest points
 // id is 0 or 1, and controls color and orientation to distinguish between
 // the two scans
@@ -205,7 +232,7 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id)
 {
   static ColorVec colors = initColors();
   vm::Marker m;
-  m.header.frame_id = "/map";
+  m.header.frame_id = "pose" + boost::lexical_cast<string>(id);
   m.header.stamp = ros::Time::now();
   m.ns = "flirtlib";
   m.id = id;
@@ -251,13 +278,22 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id)
   return m;
 }
 
+
+/************************************************************
+ * Main loop
+ ***********************************************************/
+
+
 void Node::mainLoop (const ros::TimerEvent& e)
 {
+  typedef vector<std::pair<InterestPoint*, InterestPoint*> > Correspondences;
+  
   try
   {
     gm::Pose pose[2];
     sm::LaserScan::Ptr scan[2];
     InterestPointVec pts[2];
+    boost::shared_ptr<LaserReading> reading[2];
 
     for (unsigned i=0; i<2; i++)
     {
@@ -274,18 +310,26 @@ void Node::mainLoop (const ros::TimerEvent& e)
       scan[i]->header.frame_id = frame;
       scan[i]->header.stamp = ros::Time::now();
       scan_pubs_[i].publish(scan[i]);
-      boost::shared_ptr<LaserReading> reading = fromRos(*scan[i], pose[i]);
+      reading[i] = fromRos(*scan[i]);
 
       // Interest point detection
-      detector_->detect(*reading, pts[i]);
+      detector_->detect(*reading[i], pts[i]);
       marker_pub_.publish(interestPointMarkers(pts[i], i));
 
       // Descriptor computation
       BOOST_FOREACH (InterestPoint* p, pts[i]) 
-      {
-        p->setDescriptor(descriptor_->describe(*p, *reading));
-      }
+        p->setDescriptor(descriptor_->describe(*p, *reading[i]));
+      
     }
+
+    // Feature matching
+    Correspondences correspondences;
+    OrientedPoint2D transform;
+    const double score = ransac_->matchSets(pts[0], pts[1], transform,
+                                            correspondences);
+    ROS_INFO ("%zu matches, with score %.4f and transform (%.2f, %.2f, %.2f)",
+              correspondences.size(), score, transform.x, transform.y,
+              transform.theta);
 
 
     // Free memory
