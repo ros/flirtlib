@@ -1,10 +1,14 @@
 <launch>
 
-  <node pkg="flirtlib_ros" name="flirtlib_ros_test" type="flirtlib_ros_test"
+  <node pkg="flirtlib_ros" type="simulate_scans" name="simulate_scans"
         output="screen">
+    <param name="num_lasers" value="2"/>
     <param name="map_file" value="$(find willow_maps)/willow-full-0.025.pgm"/>
     <param name="resolution" value="0.025"/>
   </node>
+
+  <node pkg="flirtlib_ros" name="flirtlib_ros_test" type="flirtlib_ros_test"
+        output="screen"/>
 
   <node pkg="flirtlib_ros" name="markers" type="markers" output="screen"/>
 

@@ -76,6 +76,7 @@ private:
 
   ros::NodeHandle nh_;
   const double pub_rate_;
+  const double num_markers_;
 
   vector<gm::Pose> poses_;
 
@@ -107,12 +108,13 @@ ros::Duration duration (const double r)
 
 MarkerNode::MarkerNode () :
   pub_rate_(getParam<double>("pub_rate", 10.0)),
+  num_markers_(getParam<int>("num_markers", 2)),
   pub_timer_(nh_.createTimer(duration(pub_rate_),
                              &MarkerNode::publishPoses, this)),
   im_server_("int_markers", "", false)
 {
-  poses_.resize(2);
-  for (unsigned i=0; i<2; i++)
+  poses_.resize(num_markers_);
+  for (unsigned i=0; i<num_markers_; i++)
   {
     // Set up an interactive marker that allows moving marker in 2d
     vm::InteractiveMarker int_marker;

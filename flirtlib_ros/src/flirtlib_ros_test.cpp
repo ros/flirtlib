@@ -41,8 +41,6 @@
 #include <flirtlib_ros/flirtlib.h>
 
 #include <flirtlib_ros/conversions.h>
-#include <occupancy_grid_utils/file.h>
-#include <occupancy_grid_utils/ray_tracer.h>
 #include <visualization_msgs/Marker.h>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
@@ -51,10 +49,8 @@
 #include <boost/lexical_cast.hpp>
 
 namespace sm=sensor_msgs;
-namespace gu=occupancy_grid_utils;
 namespace vm=visualization_msgs;
 namespace gm=geometry_msgs;
-namespace nm=nav_msgs;
 
 using std::string;
 using std::vector;
@@ -112,6 +108,7 @@ public:
   Node ();
 
   void mainLoop (const ros::TimerEvent& e);
+  void scanCB (unsigned i, const sm::LaserScan::ConstPtr& scan);
 
 private:
 
@@ -119,13 +116,8 @@ private:
   boost::mutex mutex_;
   ros::NodeHandle nh_;
 
-  // Parameters
-  const string map_file_;
-  const double resolution_;
-  const sm::LaserScan scanner_params_;
-
   // State
-  nm::OccupancyGrid::Ptr grid_;
+  vector<sm::LaserScan::ConstPtr> scan_;
 
   // Flirtlib objects
   boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
@@ -135,8 +127,7 @@ private:
   boost::shared_ptr<RansacFeatureSetMatcher> ransac_;
   
   // Ros objects
-  ros::Publisher scan_pubs_[2];
-  ros::Publisher grid_pub_;
+  ros::Subscriber scan_subs_[2];
   ros::Publisher marker_pub_;
   tf::TransformListener tf_;
   ros::Timer exec_timer_;
@@ -148,40 +139,6 @@ private:
  * Initialization
  ***********************************************************/
 
-
-template <class T>
-T getPrivateParam (const string& name, const T& default_val)
-{
-  ros::NodeHandle nh("~");
-  T val;
-  nh.param(name, val, default_val);
-  ROS_DEBUG_STREAM_NAMED ("init", "Setting parameter " << name << " to " <<
-                          val << " (default was " << default_val << ")");
-  return val;
-}
-
-template <class T>
-T getPrivateParam (const string& name)
-{
-  ros::NodeHandle nh("~");
-  T val;
-  const bool found = nh.getParam(name, val);
-  ROS_ASSERT_MSG (found, "Could not find parameter %s", name.c_str());
-  ROS_DEBUG_STREAM_NAMED ("init", "Initialized " << name << " to " << val);
-  return val;
-}
-
-sm::LaserScan getScannerParams ()
-{
-  sm::LaserScan params;
-  const double PI = 3.14159265;
-  params.angle_min = -PI/2;
-  params.angle_max = PI/2;
-  params.angle_increment = PI/180;
-  params.range_max = 10;
-
-  return params;
-}
 
 SimpleMinMaxPeakFinder* createPeakFinder ()
 {
@@ -213,34 +170,22 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
 }
 
 Node::Node () :
-  map_file_(getPrivateParam<string>("map_file")),
-  resolution_(getPrivateParam<double>("resolution")),
-  scanner_params_(getScannerParams()),
-
-  grid_(gu::loadGrid(map_file_, resolution_)),
-
-  peak_finder_(createPeakFinder()),
+  scan_(2), peak_finder_(createPeakFinder()),
   histogram_dist_(new EuclideanDistance<double>()),
   detector_(createDetector(peak_finder_.get())),
   descriptor_(createDescriptor(histogram_dist_.get())),
   ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
                                            0.0384, false)),
 
-  grid_pub_(nh_.advertise<nm::OccupancyGrid>("grid", 10, true)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   exec_timer_(nh_.createTimer(ros::Duration(0.2), &Node::mainLoop, this))
 {
   for (unsigned i=0; i<2; i++)
   {
     const string topic = "scan" + boost::lexical_cast<string>(i);
-    scan_pubs_[i] = nh_.advertise<sm::LaserScan>(topic, 10, true);
+    scan_subs_[i] = nh_.subscribe<sm::LaserScan>(topic, 10,
+                                                 boost::bind(&Node::scanCB, this, i, _1));
   }
-  grid_->header.frame_id = "/map";
-  grid_->header.stamp = ros::Time::now();
-  ROS_INFO ("Loaded a %ux%u grid at %.4f m/cell",
-            grid_->info.height, grid_->info.width,
-            grid_->info.resolution);
-  grid_pub_.publish(grid_);
 }
 
 typedef vector<std_msgs::ColorRGBA> ColorVec;
@@ -343,6 +288,16 @@ vm::Marker correspondenceMarkers (const Correspondences& correspondences,
   return m;
 }
 
+/************************************************************
+ * Callbacks
+ ***********************************************************/
+
+void Node::scanCB (const unsigned i, const sm::LaserScan::ConstPtr& scan)
+{
+  Lock l(mutex_);
+  scan_[i] = scan;
+}
+
 
 /************************************************************
  * Main loop
@@ -351,11 +306,16 @@ vm::Marker correspondenceMarkers (const Correspondences& correspondences,
 
 void Node::mainLoop (const ros::TimerEvent& e)
 {
-  
+  Lock l(mutex_);
+  if (!scan_[0] || !scan_[1])
+  {
+    ROS_INFO_THROTTLE (1.0, "Waiting till scans received");
+    return;
+  }
+    
   try
   {
     gm::Pose pose[2];
-    sm::LaserScan::Ptr scan[2];
     InterestPointVec pts[2];
     boost::shared_ptr<LaserReading> reading[2];
 
@@ -368,13 +328,8 @@ void Node::mainLoop (const ros::TimerEvent& e)
       tf_.lookupTransform("/map", frame, ros::Time(), trans);
       tf::poseTFToMsg(trans, pose[i]);
 
-      // Simulate scans and convert to flirtlib
-      scan[i] = gu::simulateRangeScan(*grid_, pose[i],
-                                      scanner_params_, true);
-      scan[i]->header.frame_id = frame;
-      scan[i]->header.stamp = ros::Time::now();
-      scan_pubs_[i].publish(scan[i]);
-      reading[i] = fromRos(*scan[i]);
+      // Convert scans to flirtlib
+      reading[i] = fromRos(*scan_[i]);
 
       // Interest point detection
       detector_->detect(*reading[i], pts[i]);
@@ -390,10 +345,10 @@ void Node::mainLoop (const ros::TimerEvent& e)
     Correspondences matches;
     OrientedPoint2D transform;
     const double score = ransac_->matchSets(pts[0], pts[1], transform, matches);
-    ROS_INFO ("Found %zu matches, with score %.4f, transform (%.2f, %.2f, %.2f)"
-              ", avg dist %.2f", matches.size(), score, transform.x,
-              transform.y, transform.theta, averageDistance(matches, pose[1],
-                                                            pose[0]));
+    ROS_INFO_THROTTLE (1.0, "Found %zu matches, with score %.4f, transform "
+                       "(%.2f, %.2f, %.2f), avg dist %.2f", matches.size(),
+                       score, transform.x, transform.y, transform.theta,
+                       averageDistance(matches, pose[1], pose[0]));
     marker_pub_.publish(correspondenceMarkers(matches, pose[1], pose[0]));
 
 
