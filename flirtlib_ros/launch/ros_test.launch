@@ -10,6 +10,8 @@
   <node pkg="flirtlib_ros" name="flirtlib_ros_test" type="flirtlib_ros_test"
         output="screen"/>
 
-  <node pkg="flirtlib_ros" name="markers" type="markers" output="screen"/>
+  <node pkg="flirtlib_ros" name="markers" type="markers" output="screen">
+    <param name="num_markers" value="2"/>
+    </node>
 
 </launch>
