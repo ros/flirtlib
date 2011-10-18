@@ -85,7 +85,9 @@ private:
   const sm::LaserScan scanner_params_;
 
   boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
+  boost::shared_ptr<HistogramDistance<double> > histogram_dist_;
   boost::shared_ptr<Detector> detector_;
+  boost::shared_ptr<DescriptorGenerator> descriptor_;
   ros::Publisher scan_pubs_[2];
   ros::Publisher grid_pub_;
   ros::Publisher marker_pub_;
@@ -145,13 +147,27 @@ Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
   return det;
 }
 
+DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
+{
+  const double min_rho = 0.02;
+  const double max_rho = 0.5;
+  const double bin_rho = 4;
+  const double bin_phi = 12;
+  BetaGridGenerator* gen = new BetaGridGenerator(min_rho, max_rho, bin_rho,
+                                                 bin_phi);
+  gen->setDistanceFunction(dist);
+  return gen;
+}
+
 Node::Node () :
   map_file_(getPrivateParam<string>("map_file")),
   resolution_(getPrivateParam<double>("resolution")),
   grid_(gu::loadGrid(map_file_, resolution_)),
   scanner_params_(getScannerParams()),
   peak_finder_(createPeakFinder()),
+  histogram_dist_(new EuclideanDistance<double>()),
   detector_(createDetector(peak_finder_.get())),
+  descriptor_(createDescriptor(histogram_dist_.get())),
   grid_pub_(nh_.advertise<nm::OccupancyGrid>("grid", 10, true)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   exec_timer_(nh_.createTimer(ros::Duration(0.2), &Node::mainLoop, this))
@@ -263,6 +279,12 @@ void Node::mainLoop (const ros::TimerEvent& e)
       // Interest point detection
       detector_->detect(*reading, pts[i]);
       marker_pub_.publish(interestPointMarkers(pts[i], i));
+
+      // Descriptor computation
+      BOOST_FOREACH (InterestPoint* p, pts[i]) 
+      {
+        p->setDescriptor(descriptor_->describe(*p, *reading));
+      }
     }
 
 
