@@ -48,6 +48,7 @@
 #include <tf/transform_listener.h>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
+#include <boost/lexical_cast.hpp>
 
 namespace sm=sensor_msgs;
 namespace gu=occupancy_grid_utils;
@@ -63,6 +64,8 @@ typedef vector<InterestPoint*> InterestPointVec;
 
 namespace flirtlib_ros
 {
+
+
 
 class Node
 {
@@ -83,7 +86,7 @@ private:
 
   boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
   boost::shared_ptr<Detector> detector_;
-  ros::Publisher scan0_pub_, scan1_pub_;
+  ros::Publisher scan_pubs_[2];
   ros::Publisher grid_pub_;
   ros::Publisher marker_pub_;
   tf::TransformListener tf_;
@@ -149,12 +152,15 @@ Node::Node () :
   scanner_params_(getScannerParams()),
   peak_finder_(createPeakFinder()),
   detector_(createDetector(peak_finder_.get())),
-  scan0_pub_(nh_.advertise<sm::LaserScan>("scan0", 10, true)),
-  scan1_pub_(nh_.advertise<sm::LaserScan>("scan1", 10, true)),
   grid_pub_(nh_.advertise<nm::OccupancyGrid>("grid", 10, true)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   exec_timer_(nh_.createTimer(ros::Duration(0.2), &Node::mainLoop, this))
 {
+  for (unsigned i=0; i<2; i++)
+  {
+    const string topic = "scan" + boost::lexical_cast<string>(i);
+    scan_pubs_[i] = nh_.advertise<sm::LaserScan>(topic, 10, true);
+  }
   grid_->header.frame_id = "/map";
   grid_->header.stamp = ros::Time::now();
   ROS_INFO ("Loaded a %ux%u grid at %.4f m/cell",
@@ -176,6 +182,9 @@ ColorVec initColors ()
   return colors;
 }
 
+// Generate visualization markers for the interest points
+// id is 0 or 1, and controls color and orientation to distinguish between
+// the two scans
 vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id)
 {
   static ColorVec colors = initColors();
@@ -230,44 +239,43 @@ void Node::mainLoop (const ros::TimerEvent& e)
 {
   try
   {
-    // Get the scans based on the published poses
-    // This part can throw a tf exception
-    tf::StampedTransform trans0, trans1;
-    tf_.lookupTransform("/map", "pose0", ros::Time(), trans0);
-    tf_.lookupTransform("/map", "pose1", ros::Time(), trans1);
-    gm::Pose pose0, pose1;
-    tf::poseTFToMsg(trans0, pose0);
-    tf::poseTFToMsg(trans1, pose1);
+    gm::Pose pose[2];
+    sm::LaserScan::Ptr scan[2];
+    InterestPointVec pts[2];
 
-    sm::LaserScan::Ptr scan0 = gu::simulateRangeScan(*grid_, pose0,
-                                                    scanner_params_, true);
-    sm::LaserScan::Ptr scan1 = gu::simulateRangeScan(*grid_, pose1,
-                                                     scanner_params_, true);
-    scan0->header.frame_id = "pose0";
-    scan0->header.stamp = ros::Time::now();
-    scan0_pub_.publish(scan0);
-                                                    
-    scan1->header.frame_id = "pose1";
-    scan1->header.stamp = ros::Time::now();
-    scan1_pub_.publish(scan1);
+    for (unsigned i=0; i<2; i++)
+    {
+      // Get the poses
+      // This part can throw a tf exception
+      tf::StampedTransform trans;
+      const string frame = "pose"+boost::lexical_cast<string>(i);
+      tf_.lookupTransform("/map", frame, ros::Time(), trans);
+      tf::poseTFToMsg(trans, pose[i]);
 
-    // Interest point detection
-    InterestPointVec pts, pts1;
-    detector_->detect(*fromRos(*scan0, pose0), pts);
-    marker_pub_.publish(interestPointMarkers(pts, 0));
-    detector_->detect(*fromRos(*scan1, pose1), pts1);
-    marker_pub_.publish(interestPointMarkers(pts1, 1));
+      // Simulate scans and convert to flirtlib
+      scan[i] = gu::simulateRangeScan(*grid_, pose[i],
+                                      scanner_params_, true);
+      scan[i]->header.frame_id = frame;
+      scan[i]->header.stamp = ros::Time::now();
+      scan_pubs_[i].publish(scan[i]);
+      boost::shared_ptr<LaserReading> reading = fromRos(*scan[i], pose[i]);
+
+      // Interest point detection
+      detector_->detect(*reading, pts[i]);
+      marker_pub_.publish(interestPointMarkers(pts[i], i));
+    }
+
 
     // Free memory
-    BOOST_FOREACH (const InterestPoint* p, pts) 
-      delete p;
-    BOOST_FOREACH (const InterestPoint* p, pts1) 
-      delete p;
+    for (unsigned i=0; i<2; i++)
+    {
+      BOOST_FOREACH (const InterestPoint* p, pts[i]) 
+        delete p;
+    }
   }
   catch (tf::TransformException& e)
   {
-    ROS_INFO_THROTTLE(1.0, "Skipping due to transform exception");
-    
+    ROS_INFO("Skipping frame due to transform exception");
   }    
 }
 
