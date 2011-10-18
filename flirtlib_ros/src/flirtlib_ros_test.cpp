@@ -80,6 +80,28 @@ gm::Point toPoint (const btVector3 p)
   return pt;
 }
 
+double averageDistance (const Correspondences& corresp,
+                              const gm::Pose& p0,
+                              const gm::Pose& p1)
+{
+  const unsigned n = corresp.size();
+  if (n<2)
+    return 1e17;
+
+  tf::Transform pose0, pose1;
+  tf::poseMsgToTF(p0, pose0);
+  tf::poseMsgToTF(p1, pose1);
+  double sum = 0;
+
+  BOOST_FOREACH (const Correspondence& c, corresp) 
+  {
+    const btVector3 pt0(c.first->getPosition().x, c.first->getPosition().y, 0.0);
+    const btVector3 pt1(c.second->getPosition().x, c.second->getPosition().y, 0.0);
+    sum += (pose0*pt0).distance(pose1*pt1);
+  }
+  return sum/n;
+}
+
 /************************************************************
  * Node class
  ***********************************************************/
@@ -201,7 +223,7 @@ Node::Node () :
   histogram_dist_(new EuclideanDistance<double>()),
   detector_(createDetector(peak_finder_.get())),
   descriptor_(createDescriptor(histogram_dist_.get())),
-  ransac_(new RansacMultiFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
+  ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
                                            0.0384, false)),
 
   grid_pub_(nh_.advertise<nm::OccupancyGrid>("grid", 10, true)),
@@ -255,7 +277,7 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id,
   m.ns = "flirtlib";
   m.id = id;
   m.type = vm::Marker::LINE_LIST;
-  m.scale.x = 0.05;
+  m.scale.x = 0.03;
   m.color = colors[id];
   BOOST_FOREACH (const InterestPoint* p, pts) 
   {
@@ -368,8 +390,10 @@ void Node::mainLoop (const ros::TimerEvent& e)
     Correspondences matches;
     OrientedPoint2D transform;
     const double score = ransac_->matchSets(pts[0], pts[1], transform, matches);
-    ROS_INFO ("%zu matches, with score %.4f and transform (%.2f, %.2f, %.2f)",
-              matches.size(), score, transform.x, transform.y, transform.theta);
+    ROS_INFO ("Found %zu matches, with score %.4f, transform (%.2f, %.2f, %.2f)"
+              ", avg dist %.2f", matches.size(), score, transform.x,
+              transform.y, transform.theta, averageDistance(matches, pose[1],
+                                                            pose[0]));
     marker_pub_.publish(correspondenceMarkers(matches, pose[1], pose[0]));
 
 
