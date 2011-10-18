@@ -9,7 +9,7 @@ Pulls in the 3rd party flirtlib package
 
   <export>
     <cpp cflags="-I${prefix}/build/FLIRTLib/src"
-         lflags="-Wl,-rpath,${prefix}/build/FLIRTLib/lib64 -L${prefix}/build/FLIRTLib/lib64 -lfeature -lgeometry -lsensors -lsensorstream -lutils"/>
+         lflags="-Wl,-rpath,${prefix}/build/FLIRTLib/lib64 -L${prefix}/build/FLIRTLib/lib64 -Wl,-rpath,${prefix}/build/FLIRTLib/lib -L${prefix}/build/FLIRTLib/lib -lfeature -lgeometry -lsensors -lsensorstream -lutils"/>
   </export>
 
 </package>

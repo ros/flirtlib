@@ -42,6 +42,7 @@
 
 #include <flirtlib_ros/conversions.h>
 #include <occupancy_grid_utils/file.h>
+#include <occupancy_grid_utils/ray_tracer.h>
 #include <visualization_msgs/Marker.h>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
@@ -113,8 +114,11 @@ private:
   const string map_file_;
   const double resolution_;
   const sm::LaserScan scanner_params_;
+  const double ref_pos_resolution_;
+  const double ref_angle_resolution_;
 
   // State
+  nm::OccupancyGrid::ConstPtr grid_;
   sm::LaserScan::ConstPtr scan_;
   vector<RefScan> ref_scans_;
 
@@ -193,6 +197,9 @@ Node::Node () :
   map_file_(getPrivateParam<string>("map_file")),
   resolution_(getPrivateParam<double>("resolution")),
   scanner_params_(getScannerParams()),
+  ref_pos_resolution_(getPrivateParam<double>("ref_pos_resolution")),
+  ref_angle_resolution_(getPrivateParam<double>("ref_angle_resolution")),
+  grid_(gu::loadGrid(map_file_, resolution_)),
 
   peak_finder_(createPeakFinder()),
   histogram_dist_(new EuclideanDistance<double>()),
@@ -228,6 +235,23 @@ ColorVec initColors ()
 void Node::initializeRefScans ()
 {
   ROS_INFO ("Initializing reference scans");
+  const unsigned skip = ref_pos_resolution_/grid_->info.resolution;
+  for (unsigned x=0; x<grid_->info.width; x+=skip)
+  {
+    for (unsigned y=0; y<grid_->info.height; y+=skip)
+    {
+      for (double theta=0; theta<6.28; theta+=ref_angle_resolution_)
+      {
+        gm::Pose pose;
+        pose.position = gu::cellCenter(grid_->info, gu::Cell(x,y));
+        pose.orientation = tf::createQuaternionMsgFromYaw(theta);
+        RefScan ref(gu::simulateRangeScan(*grid_, pose, scanner_params_, true),
+                    pose);
+        ref_scans_.push_back(ref);
+      }
+    }
+  }
+  ROS_INFO_STREAM ("Generated " << ref_scans_.size() << " reference scans");
 }
 
 

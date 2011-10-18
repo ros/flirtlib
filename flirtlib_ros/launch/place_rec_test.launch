@@ -15,6 +15,8 @@
         output="screen">
     <param name="map_file" value="$(find willow_maps)/willow-full-0.025.pgm"/>
     <param name="resolution" value="0.025"/>
+    <param name="ref_pos_resolution" value="1.0"/>
+    <param name="ref_angle_resolution" value="0.75"/>
   </node>
 
 </launch>
