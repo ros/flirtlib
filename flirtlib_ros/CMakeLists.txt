@@ -37,10 +37,12 @@ target_link_libraries(ransac_test feature sensorstream sensors utils)
 
 rosbuild_add_executable(flirtlib_ros_test src/flirtlib_ros_test.cpp)
 target_link_libraries(flirtlib_ros_test feature sensorstream sensors utils)
-target_link_libraries(flirtlib_ros_test grid_utils)
 target_link_libraries(flirtlib_ros_test flirtlib_ros)
 
 rosbuild_add_executable(markers src/interactive_markers.cpp)
 
 rosbuild_add_executable(simulate_scans src/simulate_scans.cpp)
 target_link_libraries(simulate_scans grid_utils)
+
+rosbuild_add_executable(place_rec_test src/place_rec_test.cpp)
+target_link_libraries(place_rec_test grid_utils)

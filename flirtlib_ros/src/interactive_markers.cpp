@@ -170,10 +170,13 @@ tf::StampedTransform toTf (const gm::Pose& p, const string& frame)
 void MarkerNode::publishPoses (const ros::TimerEvent& e)
 {
   Lock l(mutex_);
-  if (poses_.size()>1)
+  if (poses_.size()>=num_markers_)
   {
-    tfb_.sendTransform(toTf(poses_[0], "pose0"));
-    tfb_.sendTransform(toTf(poses_[1], "pose1"));
+    for (unsigned i=0; i<num_markers_; i++)
+    {
+      const string frame = "pose" + boost::lexical_cast<string>(i);
+      tfb_.sendTransform(toTf(poses_[i], frame));
+    }
   }
   else
     ROS_INFO_THROTTLE(2.0, "Waiting for marker poses before publishing");

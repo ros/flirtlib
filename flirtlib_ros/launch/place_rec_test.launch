@@ -1,0 +1,20 @@
+<launch>
+
+  <node pkg="flirtlib_ros" type="simulate_scans" name="simulate_scans"
+        output="screen">
+    <param name="num_lasers" value="1"/>
+    <param name="map_file" value="$(find willow_maps)/willow-full-0.025.pgm"/>
+    <param name="resolution" value="0.025"/>
+  </node>
+
+  <node pkg="flirtlib_ros" name="markers" type="markers" output="screen">
+    <param name="num_markers" value="1"/>
+  </node>
+
+  <node pkg="flirtlib_ros" name="place_rec_test" type="place_rec_test"
+        output="screen">
+    <param name="map_file" value="$(find willow_maps)/willow-full-0.025.pgm"/>
+    <param name="resolution" value="0.025"/>
+  </node>
+
+</launch>
