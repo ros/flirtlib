@@ -61,9 +61,24 @@ using std::vector;
 
 typedef boost::mutex::scoped_lock Lock;
 typedef vector<InterestPoint*> InterestPointVec;
+typedef std::pair<InterestPoint*, InterestPoint*> Correspondence;
+typedef vector<Correspondence> Correspondences;
 
 namespace flirtlib_ros
 {
+
+/************************************************************
+ * Utilities
+ ***********************************************************/
+
+gm::Point toPoint (const btVector3 p)
+{
+  gm::Point pt;
+  pt.x = p.x();
+  pt.y = p.y();
+  pt.z = p.z();
+  return pt;
+}
 
 /************************************************************
  * Node class
@@ -228,11 +243,14 @@ ColorVec initColors ()
 // Generate visualization markers for the interest points
 // id is 0 or 1, and controls color and orientation to distinguish between
 // the two scans
-vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id)
+vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id,
+                                 const gm::Pose& pose)
 {
+  tf::Transform trans;
+  tf::poseMsgToTF(pose, trans);
   static ColorVec colors = initColors();
   vm::Marker m;
-  m.header.frame_id = "pose" + boost::lexical_cast<string>(id);
+  m.header.frame_id = "/map";
   m.header.stamp = ros::Time::now();
   m.ns = "flirtlib";
   m.id = id;
@@ -264,15 +282,40 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id)
 
     for (unsigned i=0; i<4; i++)
     {
-      unsigned j = (i==0) ? 3 : i-1;
-      gm::Point pt, pt2;
-      pt.x = x0+dx[i];
-      pt.y = y0+dy[i];
-      pt2.x = x0+dx[j];
-      pt2.y = y0+dy[j];
-      m.points.push_back(pt);
-      m.points.push_back(pt2);      
+      const unsigned j = (i==0) ? 3 : i-1;
+      const btVector3 pt0(x0+dx[i], y0+dy[i], 0);
+      const btVector3 pt1(x0+dx[j], y0+dy[j], 0);
+      m.points.push_back(toPoint(trans*pt0));
+      m.points.push_back(toPoint(trans*pt1));
     }
+  }
+
+  return m;
+}
+
+// Generate markers to visualize correspondences between two scans
+vm::Marker correspondenceMarkers (const Correspondences& correspondences,
+                                  const gm::Pose& p0, const gm::Pose& p1)
+{
+  vm::Marker m;
+  m.header.frame_id = "/map";
+  m.header.stamp = ros::Time::now();
+  m.ns = "flirtlib";
+  m.id = 42;
+  m.type = vm::Marker::LINE_LIST;
+  m.scale.x = 0.05;
+  m.color.r = m.color.a = 1.0;
+  m.color.g = 0.65;
+  tf::Pose pose0, pose1;
+  tf::poseMsgToTF(p0, pose0);
+  tf::poseMsgToTF(p1, pose1);
+
+  BOOST_FOREACH (const Correspondence& c, correspondences) 
+  {
+    const btVector3 pt0(c.first->getPosition().x, c.first->getPosition().y, 0.0);
+    const btVector3 pt1(c.second->getPosition().x, c.second->getPosition().y, 0.0);
+    m.points.push_back(toPoint(pose0*pt0));
+    m.points.push_back(toPoint(pose1*pt1));
   }
 
   return m;
@@ -286,7 +329,6 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id)
 
 void Node::mainLoop (const ros::TimerEvent& e)
 {
-  typedef vector<std::pair<InterestPoint*, InterestPoint*> > Correspondences;
   
   try
   {
@@ -314,7 +356,7 @@ void Node::mainLoop (const ros::TimerEvent& e)
 
       // Interest point detection
       detector_->detect(*reading[i], pts[i]);
-      marker_pub_.publish(interestPointMarkers(pts[i], i));
+      marker_pub_.publish(interestPointMarkers(pts[i], i, pose[i]));
 
       // Descriptor computation
       BOOST_FOREACH (InterestPoint* p, pts[i]) 
@@ -323,13 +365,12 @@ void Node::mainLoop (const ros::TimerEvent& e)
     }
 
     // Feature matching
-    Correspondences correspondences;
+    Correspondences matches;
     OrientedPoint2D transform;
-    const double score = ransac_->matchSets(pts[0], pts[1], transform,
-                                            correspondences);
+    const double score = ransac_->matchSets(pts[0], pts[1], transform, matches);
     ROS_INFO ("%zu matches, with score %.4f and transform (%.2f, %.2f, %.2f)",
-              correspondences.size(), score, transform.x, transform.y,
-              transform.theta);
+              matches.size(), score, transform.x, transform.y, transform.theta);
+    marker_pub_.publish(correspondenceMarkers(matches, pose[1], pose[0]));
 
 
     // Free memory
