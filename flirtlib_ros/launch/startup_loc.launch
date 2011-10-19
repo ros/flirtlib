@@ -1,0 +1,20 @@
+<!--
+
+Brings up the startup_loc node.   
+
+Requires:
+- Incoming scans on the base_scan topic.
+- tf transform from base_laser_link to map
+
+Provides:
+
+-->
+
+<launch>
+
+  <remap from="scan" to="base_scan"/>
+  <node pkg="flirtlib_ros" name="startup_loc" type="startup_loc"
+        output="screen">
+  </node>
+
+</launch>

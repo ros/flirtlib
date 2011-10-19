@@ -47,3 +47,7 @@ target_link_libraries(simulate_scans grid_utils)
 rosbuild_add_executable(place_rec_test src/place_rec_test.cpp)
 target_link_libraries(place_rec_test grid_utils)
 target_link_libraries(place_rec_test flirtlib_ros)
+
+rosbuild_add_executable(startup_loc src/startup_loc.cpp)
+target_link_libraries(startup_loc grid_utils)
+target_link_libraries(startup_loc flirtlib_ros)

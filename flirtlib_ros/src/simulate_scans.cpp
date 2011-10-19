@@ -31,9 +31,16 @@
 /**
  * \file 
  * 
- * Ros node that loads a map, then simulates scans based on the position of a
- * given tf frame.  Essentially does what stage does without needing to bring
- * up a sim, and with more control over the scan generation.
+ * Ros node that loads a map, then simulates scans based on the positions of a
+ * set of tf frames, one per laser.  Essentially does what stage does without
+ * needing to bring up a sim, and with more control over the scan generation.
+ * 
+ * Expects:
+ * - tf with transforms from laser frames to global frame
+ *
+ * Publishes:
+ * - the loaded occupancy grid
+ * - scan0, scan1, ... (one for each laser frame)
  *
  * \author Bhaskara Marthi
  */
