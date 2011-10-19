@@ -49,6 +49,7 @@
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/optional.hpp>
 
 namespace sm=sensor_msgs;
 namespace gu=occupancy_grid_utils;
@@ -71,22 +72,15 @@ namespace flirtlib_ros
  * Utilities
  ***********************************************************/
 
-gm::Point toPoint (const btVector3 p)
-{
-  gm::Point pt;
-  pt.x = p.x();
-  pt.y = p.y();
-  pt.z = p.z();
-  return pt;
-}
-
 struct RefScan
 {
   sm::LaserScan::ConstPtr scan;
   gm::Pose pose;
+  InterestPointVec pts;
 
-  RefScan (sm::LaserScan::ConstPtr scan, const gm::Pose& pose) :
-    scan(scan), pose(pose)
+  RefScan (sm::LaserScan::ConstPtr scan, const gm::Pose& pose,
+           const InterestPointVec& pts) :
+    scan(scan), pose(pose), pts(pts)
   {}
 };
 
@@ -105,6 +99,7 @@ public:
 private:
 
   void initializeRefScans();
+  gm::Pose getPose();
 
   // Needed during initialization
   boost::mutex mutex_;
@@ -116,11 +111,14 @@ private:
   const sm::LaserScan scanner_params_;
   const double ref_pos_resolution_;
   const double ref_angle_resolution_;
+  const double x0_, x1_, y0_, y1_;
+  const unsigned num_matches_required_;
 
   // State
   nm::OccupancyGrid::ConstPtr grid_;
   sm::LaserScan::ConstPtr scan_;
   vector<RefScan> ref_scans_;
+  boost::optional<gm::Pose> last_pose_;
 
   // Flirtlib objects
   boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
@@ -130,6 +128,7 @@ private:
   boost::shared_ptr<RansacFeatureSetMatcher> ransac_;
   
   // Ros objects
+  tf::TransformListener tf_;
   ros::Subscriber scan_sub_;
   ros::Publisher marker_pub_;
   ros::Timer exec_timer_;
@@ -149,6 +148,17 @@ T getPrivateParam (const string& name)
   const bool found = nh.getParam(name, val);
   ROS_ASSERT_MSG (found, "Could not find parameter %s", name.c_str());
   ROS_DEBUG_STREAM_NAMED ("init", "Initialized " << name << " to " << val);
+  return val;
+}
+
+template <class T>
+T getPrivateParam (const string& name, const T& default_val)
+{
+  ros::NodeHandle nh("~");
+  T val;
+  nh.param(name, val, default_val);
+  ROS_DEBUG_STREAM_NAMED ("init", "Initialized " << name << " to " << val <<
+                          "(default was " << default_val << ")");
   return val;
 }
 
@@ -199,6 +209,11 @@ Node::Node () :
   scanner_params_(getScannerParams()),
   ref_pos_resolution_(getPrivateParam<double>("ref_pos_resolution")),
   ref_angle_resolution_(getPrivateParam<double>("ref_angle_resolution")),
+  x0_(getPrivateParam<double>("x0", -1e9)),
+  x1_(getPrivateParam<double>("x1", 1e9)),
+  y0_(getPrivateParam<double>("y0", -1e9)),
+  y1_(getPrivateParam<double>("y1", 1e9)),
+  num_matches_required_(getPrivateParam<int>("num_matches_required", 10)),
   grid_(gu::loadGrid(map_file_, resolution_)),
 
   peak_finder_(createPeakFinder()),
@@ -215,18 +230,6 @@ Node::Node () :
   initializeRefScans();
 }
 
-typedef vector<std_msgs::ColorRGBA> ColorVec;
-ColorVec initColors ()
-{
-  ColorVec colors(2);
-  colors[0].r = 0.5;
-  colors[0].g = 1.0;
-  colors[0].a = 1.0;
-  colors[1].r = 1.0;
-  colors[1].g = 1.0;
-  colors[1].a = 1.0;
-  return colors;
-}
 
 /************************************************************
  * Creation of reference scans
@@ -242,11 +245,31 @@ void Node::initializeRefScans ()
     {
       for (double theta=0; theta<6.28; theta+=ref_angle_resolution_)
       {
+        // Get position and see if it's within limits
         gm::Pose pose;
-        pose.position = gu::cellCenter(grid_->info, gu::Cell(x,y));
+        const gu::Cell c(x,y);
+        pose.position = gu::cellCenter(grid_->info, c);
         pose.orientation = tf::createQuaternionMsgFromYaw(theta);
-        RefScan ref(gu::simulateRangeScan(*grid_, pose, scanner_params_, true),
-                    pose);
+        if ((pose.position.x > x1_) || (pose.position.x < x0_) ||
+            (pose.position.y > y1_) || (pose.position.y < y0_))
+          continue;
+        if (grid_->data[cellIndex(grid_->info, c)]!=gu::UNOCCUPIED)
+          continue;
+        ROS_INFO_THROTTLE (0.1, "Pos: %.2f, %.2f", pose.position.x,
+                           pose.position.y);
+        
+        // Simulate scan
+        sm::LaserScan::Ptr scan = gu::simulateRangeScan(*grid_, pose, scanner_params_, true);
+
+        // Convert to flirtlib and extract features
+        boost::shared_ptr<LaserReading> reading = fromRos(*scan);
+        InterestPointVec pts;
+        detector_->detect(*reading, pts);
+        BOOST_FOREACH (InterestPoint* p, pts)
+          p->setDescriptor(descriptor_->describe(*p, *reading));
+        
+        // Save
+        RefScan ref(scan, pose, pts);
         ref_scans_.push_back(ref);
       }
     }
@@ -259,87 +282,6 @@ void Node::initializeRefScans ()
  * Visualization
  ***********************************************************/
 
-
-// Generate visualization markers for the interest points
-// id is 0 or 1, and controls color and orientation to distinguish between
-// the two scans
-vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id,
-                                 const gm::Pose& pose)
-{
-  tf::Transform trans;
-  tf::poseMsgToTF(pose, trans);
-  static ColorVec colors = initColors();
-  vm::Marker m;
-  m.header.frame_id = "/map";
-  m.header.stamp = ros::Time::now();
-  m.ns = "flirtlib";
-  m.id = id;
-  m.type = vm::Marker::LINE_LIST;
-  m.scale.x = 0.03;
-  m.color = colors[id];
-  BOOST_FOREACH (const InterestPoint* p, pts) 
-  {
-    const double x0 = p->getPosition().x;
-    const double y0 = p->getPosition().y;
-    const double d = 0.1;
-    double dx[4];
-    double dy[4];
-    if (id==0)
-    {
-      dx[0] = dx[3] = -d;
-      dx[1] = dx[2] = d;
-      dy[0] = dy[1] = -d;
-      dy[2] = dy[3] = d;
-    }
-    else
-    {
-      ROS_ASSERT(id==1);
-      const double r2 = sqrt(2);
-      dx[0] = dx[2] = dy[1] = dy[3] = 0;
-      dx[1] = dy[0] = -r2*d;
-      dx[3] = dy[2] = r2*d;
-    }
-
-    for (unsigned i=0; i<4; i++)
-    {
-      const unsigned j = (i==0) ? 3 : i-1;
-      const btVector3 pt0(x0+dx[i], y0+dy[i], 0);
-      const btVector3 pt1(x0+dx[j], y0+dy[j], 0);
-      m.points.push_back(toPoint(trans*pt0));
-      m.points.push_back(toPoint(trans*pt1));
-    }
-  }
-
-  return m;
-}
-
-// Generate markers to visualize correspondences between two scans
-vm::Marker correspondenceMarkers (const Correspondences& correspondences,
-                                  const gm::Pose& p0, const gm::Pose& p1)
-{
-  vm::Marker m;
-  m.header.frame_id = "/map";
-  m.header.stamp = ros::Time::now();
-  m.ns = "flirtlib";
-  m.id = 42;
-  m.type = vm::Marker::LINE_LIST;
-  m.scale.x = 0.05;
-  m.color.r = m.color.a = 1.0;
-  m.color.g = 0.65;
-  tf::Pose pose0, pose1;
-  tf::poseMsgToTF(p0, pose0);
-  tf::poseMsgToTF(p1, pose1);
-
-  BOOST_FOREACH (const Correspondence& c, correspondences) 
-  {
-    const btVector3 pt0(c.first->getPosition().x, c.first->getPosition().y, 0.0);
-    const btVector3 pt1(c.second->getPosition().x, c.second->getPosition().y, 0.0);
-    m.points.push_back(toPoint(pose0*pt0));
-    m.points.push_back(toPoint(pose1*pt1));
-  }
-
-  return m;
-}
 
 /************************************************************
  * Callbacks
@@ -358,11 +300,78 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
  ***********************************************************/
 
 
+gm::Pose Node::getPose ()
+{
+  tf::StampedTransform trans;
+  tf_.lookupTransform("/map", "pose0", ros::Time(), trans);
+  gm::Pose pose;
+  tf::poseTFToMsg(trans, pose);
+  return pose;
+}
+
+bool closeTo (const gm::Pose& p1, const gm::Pose& p2)
+{
+  const double TOL=1e-3;
+  const double dx = p1.position.x - p2.position.x;
+  const double dy = p1.position.y - p2.position.y;
+  const double dt = tf::getYaw(p1.orientation) - tf::getYaw(p2.orientation);
+  return fabs(dx)<TOL && fabs(dy)<TOL && fabs(dt)<TOL;
+}
+
 void Node::mainLoop (const ros::TimerEvent& e)
 {
-  Lock l(mutex_);
-  ROS_INFO ("Main loop");
+  try
+  {
+    // Getting pose is the part that can throw exceptions
+    const gm::Pose current_pose = getPose();
+    const double theta = tf::getYaw(current_pose.orientation);
+    const double x=current_pose.position.x;
+    const double y=current_pose.position.y;
+
+    Lock l(mutex_);
+    if (last_pose_ && closeTo(*last_pose_, current_pose))
+      return;
+    if (!scan_)
+      return;
+
+    ROS_INFO("Matching scan at %.2f, %.2f, %.2f", x, y, theta);
+    // Extract features for this scan
+    InterestPointVec pts;
+    boost::shared_ptr<LaserReading> reading = fromRos(*scan_);
+    detector_->detect(*reading, pts);
+    BOOST_FOREACH (InterestPoint* p, pts) 
+      p->setDescriptor(descriptor_->describe(*p, *reading));
+    marker_pub_.publish(interestPointMarkers(pts, current_pose, 0));
+
+    // Match
+    vector<gm::Pose> match_poses;
+    BOOST_FOREACH (const RefScan& ref_scan, ref_scans_) 
+    {
+      Correspondences matches;
+      OrientedPoint2D transform;
+      ransac_->matchSets(ref_scan.pts, pts, transform, matches);
+      if (matches.size() > num_matches_required_)
+      {
+        ROS_INFO ("Found %zu matches with ref scan at %.2f, %.2f, %.2f.  "
+                  "Current pose is %.2f, %.2f, %.2f.", matches.size(),
+                  ref_scan.pose.position.x, ref_scan.pose.position.y,
+                  tf::getYaw(ref_scan.pose.orientation), x, y, theta);
+        match_poses.push_back(ref_scan.pose);
+      }
+    }
+    ROS_INFO ("Done matching");
+
+    BOOST_FOREACH (const vm::Marker& m, poseMarkers(match_poses))
+      marker_pub_.publish(m);
+    last_pose_ = current_pose;
+  }
+
+  catch (tf::TransformException& e)
+  {
+    ROS_INFO ("Skipping because of tf exception");
+  }
 }
+
 
 
 

@@ -39,15 +39,27 @@
 #ifndef FLIRTLIB_ROS_CONVERSIONS_H
 #define FLIRTLIB_ROS_CONVERSIONS_H
 
+#include "flirtlib.h"
 #include <sensor_msgs/LaserScan.h>
+#include <visualization_msgs/Marker.h>
 #include <geometry_msgs/Pose.h>
-#include <sensors/LaserReading.h>
 
 namespace flirtlib_ros
 {
 
 /// Convert a ROS laser scan message to a flirtlib scan
 boost::shared_ptr<LaserReading> fromRos(const sensor_msgs::LaserScan& scan);
+
+/// Turn a set of interest points into visualization markers.
+/// id can be 0 or 1 to control color and orientation when distinguishing 
+/// two scans.
+visualization_msgs::Marker interestPointMarkers (const std::vector<InterestPoint*>& pts,
+                                                  const geometry_msgs::Pose& pose,
+                                                  unsigned id=0);
+
+
+/// Markers for a set of poses
+std::vector<visualization_msgs::Marker> poseMarkers (const std::vector<geometry_msgs::Pose>& poses);
 
 
 } // namespace

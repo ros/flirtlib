@@ -37,7 +37,6 @@
  * \author Bhaskara Marthi
  */
 
-#define BOOST_NO_HASH
 #include <flirtlib_ros/flirtlib.h>
 
 #include <flirtlib_ros/conversions.h>
@@ -188,77 +187,12 @@ Node::Node () :
   }
 }
 
-typedef vector<std_msgs::ColorRGBA> ColorVec;
-ColorVec initColors ()
-{
-  ColorVec colors(2);
-  colors[0].r = 0.5;
-  colors[0].g = 1.0;
-  colors[0].a = 1.0;
-  colors[1].r = 1.0;
-  colors[1].g = 1.0;
-  colors[1].a = 1.0;
-  return colors;
-}
 
 
 /************************************************************
  * Visualization
  ***********************************************************/
 
-
-// Generate visualization markers for the interest points
-// id is 0 or 1, and controls color and orientation to distinguish between
-// the two scans
-vm::Marker interestPointMarkers (const InterestPointVec& pts, const unsigned id,
-                                 const gm::Pose& pose)
-{
-  tf::Transform trans;
-  tf::poseMsgToTF(pose, trans);
-  static ColorVec colors = initColors();
-  vm::Marker m;
-  m.header.frame_id = "/map";
-  m.header.stamp = ros::Time::now();
-  m.ns = "flirtlib";
-  m.id = id;
-  m.type = vm::Marker::LINE_LIST;
-  m.scale.x = 0.03;
-  m.color = colors[id];
-  BOOST_FOREACH (const InterestPoint* p, pts) 
-  {
-    const double x0 = p->getPosition().x;
-    const double y0 = p->getPosition().y;
-    const double d = 0.1;
-    double dx[4];
-    double dy[4];
-    if (id==0)
-    {
-      dx[0] = dx[3] = -d;
-      dx[1] = dx[2] = d;
-      dy[0] = dy[1] = -d;
-      dy[2] = dy[3] = d;
-    }
-    else
-    {
-      ROS_ASSERT(id==1);
-      const double r2 = sqrt(2);
-      dx[0] = dx[2] = dy[1] = dy[3] = 0;
-      dx[1] = dy[0] = -r2*d;
-      dx[3] = dy[2] = r2*d;
-    }
-
-    for (unsigned i=0; i<4; i++)
-    {
-      const unsigned j = (i==0) ? 3 : i-1;
-      const btVector3 pt0(x0+dx[i], y0+dy[i], 0);
-      const btVector3 pt1(x0+dx[j], y0+dy[j], 0);
-      m.points.push_back(toPoint(trans*pt0));
-      m.points.push_back(toPoint(trans*pt1));
-    }
-  }
-
-  return m;
-}
 
 // Generate markers to visualize correspondences between two scans
 vm::Marker correspondenceMarkers (const Correspondences& correspondences,
@@ -333,7 +267,7 @@ void Node::mainLoop (const ros::TimerEvent& e)
 
       // Interest point detection
       detector_->detect(*reading[i], pts[i]);
-      marker_pub_.publish(interestPointMarkers(pts[i], i, pose[i]));
+      marker_pub_.publish(interestPointMarkers(pts[i], pose[i], i));
 
       // Descriptor computation
       BOOST_FOREACH (InterestPoint* p, pts[i]) 

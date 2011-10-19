@@ -39,6 +39,8 @@
 #ifndef FLIRTLIB_ROS_FLIRTLIB_H
 #define FLIRTLIB_ROS_FLIRTLIB_H
 
+#define BOOST_NO_HASH
+
 #include <feature/Detector.h>
 #include <feature/ShapeContext.h>
 #include <feature/BetaGrid.h>
