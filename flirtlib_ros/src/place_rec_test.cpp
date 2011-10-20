@@ -44,6 +44,7 @@
 #include <occupancy_grid_utils/file.h>
 #include <occupancy_grid_utils/ray_tracer.h>
 #include <visualization_msgs/Marker.h>
+#include <mongo_ros/message_collection.h>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
 #include <boost/thread.hpp>
@@ -51,38 +52,26 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/optional.hpp>
 
+namespace flirtlib_ros
+{
+
 namespace sm=sensor_msgs;
 namespace gu=occupancy_grid_utils;
 namespace vm=visualization_msgs;
 namespace gm=geometry_msgs;
+namespace mr=mongo_ros;
 namespace nm=nav_msgs;
 
 using std::string;
 using std::vector;
+using boost::shared_ptr;
 
 typedef boost::mutex::scoped_lock Lock;
 typedef vector<InterestPoint*> InterestPointVec;
 typedef std::pair<InterestPoint*, InterestPoint*> Correspondence;
 typedef vector<Correspondence> Correspondences;
+typedef vector<RefScan> RefScans;
 
-namespace flirtlib_ros
-{
-
-/************************************************************
- * Utilities
- ***********************************************************/
-
-struct RefScan
-{
-  sm::LaserScan::ConstPtr scan;
-  gm::Pose pose;
-  InterestPointVec pts;
-
-  RefScan (sm::LaserScan::ConstPtr scan, const gm::Pose& pose,
-           const InterestPointVec& pts) :
-    scan(scan), pose(pose), pts(pts)
-  {}
-};
 
 /************************************************************
  * Node class
@@ -98,6 +87,7 @@ public:
 
 private:
 
+  RefScans generateRefScans () const;
   void initializeRefScans();
   gm::Pose getPose();
 
@@ -105,28 +95,22 @@ private:
   boost::mutex mutex_;
   ros::NodeHandle nh_;
 
-  // Parameters 
-  const string map_file_;
-  const double resolution_;
-  const sm::LaserScan scanner_params_;
-  const double ref_pos_resolution_;
-  const double ref_angle_resolution_;
-  const double x0_, x1_, y0_, y1_;
+  // Parameters
+  const string scan_db_;
   const unsigned num_matches_required_;
 
   // State
-  nm::OccupancyGrid::ConstPtr grid_;
   sm::LaserScan::ConstPtr scan_;
-  vector<RefScan> ref_scans_;
+  RefScans ref_scans_;
   boost::optional<gm::Pose> last_pose_;
 
-  // Flirtlib objects
-  boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
-  boost::shared_ptr<HistogramDistance<double> > histogram_dist_;
-  boost::shared_ptr<Detector> detector_;
-  boost::shared_ptr<DescriptorGenerator> descriptor_;
-  boost::shared_ptr<RansacFeatureSetMatcher> ransac_;
-  
+  /// Flirtlib
+  shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
+  shared_ptr<HistogramDistance<double> > histogram_dist_;
+  shared_ptr<Detector> detector_;
+  shared_ptr<DescriptorGenerator> descriptor_;
+  shared_ptr<RansacFeatureSetMatcher> ransac_;
+ 
   // Ros objects
   tf::TransformListener tf_;
   ros::Subscriber scan_sub_;
@@ -204,17 +188,8 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
 }
 
 Node::Node () :
-  map_file_(getPrivateParam<string>("map_file")),
-  resolution_(getPrivateParam<double>("resolution")),
-  scanner_params_(getScannerParams()),
-  ref_pos_resolution_(getPrivateParam<double>("ref_pos_resolution")),
-  ref_angle_resolution_(getPrivateParam<double>("ref_angle_resolution")),
-  x0_(getPrivateParam<double>("x0", -1e9)),
-  x1_(getPrivateParam<double>("x1", 1e9)),
-  y0_(getPrivateParam<double>("y0", -1e9)),
-  y1_(getPrivateParam<double>("y1", 1e9)),
+  scan_db_(getPrivateParam<string>("scan_db", "")),
   num_matches_required_(getPrivateParam<int>("num_matches_required", 10)),
-  grid_(gu::loadGrid(map_file_, resolution_)),
 
   peak_finder_(createPeakFinder()),
   histogram_dist_(new EuclideanDistance<double>()),
@@ -235,47 +210,93 @@ Node::Node () :
  * Creation of reference scans
  ***********************************************************/
 
-void Node::initializeRefScans ()
+RefScans Node::generateRefScans() const
 {
-  ROS_INFO ("Initializing reference scans");
-  const unsigned skip = ref_pos_resolution_/grid_->info.resolution;
-  for (unsigned x=0; x<grid_->info.width; x+=skip)
+  // Read parameters from server
+  const string map_file = getPrivateParam<string>("map_file");
+  const double resolution = getPrivateParam<double>("resolution");
+  const sm::LaserScan scanner_params = getScannerParams();
+  const double ref_pos_resolution = getPrivateParam<double>("ref_pos_resolution");
+  const double ref_angle_resolution = getPrivateParam<double>("ref_angle_resolution");
+  const double x0 = getPrivateParam<double>("x0", -1e9);
+  const double x1 = getPrivateParam<double>("x1", 1e9);
+  const double y0 = getPrivateParam<double>("y0", -1e9);
+  const double y1 = getPrivateParam<double>("y1", 1e9);
+
+  // Load grid
+  nm::OccupancyGrid::ConstPtr grid = gu::loadGrid(map_file, resolution);
+  const unsigned skip = ref_pos_resolution/grid->info.resolution;
+
+  RefScans ref_scans;
+
+  for (unsigned x=0; x<grid->info.width; x+=skip)
   {
-    for (unsigned y=0; y<grid_->info.height; y+=skip)
+    for (unsigned y=0; y<grid->info.height; y+=skip)
     {
-      for (double theta=0; theta<6.28; theta+=ref_angle_resolution_)
+      for (double theta=0; theta<6.28; theta+=ref_angle_resolution)
       {
         // Get position and see if it's within limits
         gm::Pose pose;
         const gu::Cell c(x,y);
-        pose.position = gu::cellCenter(grid_->info, c);
+        pose.position = gu::cellCenter(grid->info, c);
         pose.orientation = tf::createQuaternionMsgFromYaw(theta);
-        if ((pose.position.x > x1_) || (pose.position.x < x0_) ||
-            (pose.position.y > y1_) || (pose.position.y < y0_))
+        if ((pose.position.x > x1) || (pose.position.x < x0) ||
+            (pose.position.y > y1) || (pose.position.y < y0))
           continue;
-        if (grid_->data[cellIndex(grid_->info, c)]!=gu::UNOCCUPIED)
+        if (grid->data[cellIndex(grid->info, c)]!=gu::UNOCCUPIED)
           continue;
         ROS_INFO_THROTTLE (0.1, "Pos: %.2f, %.2f", pose.position.x,
                            pose.position.y);
         
         // Simulate scan
-        sm::LaserScan::Ptr scan = gu::simulateRangeScan(*grid_, pose, scanner_params_, true);
+        sm::LaserScan::Ptr scan = gu::simulateRangeScan(*grid, pose, scanner_params, true);
 
         // Convert to flirtlib and extract features
-        boost::shared_ptr<LaserReading> reading = fromRos(*scan);
+        shared_ptr<LaserReading> reading = fromRos(*scan);
         InterestPointVec pts;
         detector_->detect(*reading, pts);
         BOOST_FOREACH (InterestPoint* p, pts)
+        {
           p->setDescriptor(descriptor_->describe(*p, *reading));
+        }
         
         // Save
-        RefScan ref(scan, pose, pts);
-        ref_scans_.push_back(ref);
+        ref_scans.push_back(RefScan(scan, pose, pts));
       }
     }
   }
-  ROS_INFO_STREAM ("Generated " << ref_scans_.size() << " reference scans");
+  ROS_INFO_STREAM ("Generated " << ref_scans.size() << " reference scans");
+  return ref_scans;
 }
+
+
+void Node::initializeRefScans ()
+{
+  if (scan_db_.size()>0)
+  {
+    mr::MessageCollection<ScanMap> coll(scan_db_, "scans");
+    if (coll.count() == 0)
+    {
+      ROS_INFO ("Didn't find any messages in %s/scans, so generating features.",
+                scan_db_.c_str());
+      ref_scans_ = generateRefScans();
+      ROS_INFO ("Saving scans");
+      coll.insert(toRos(ref_scans_));
+    }
+    else
+    {
+      ROS_INFO ("Loading scans from %s/scans", scan_db_.c_str());
+      ScanMap::ConstPtr scan_map = coll.pullAllResults(mr::Query(), false)[0];
+      ref_scans_ = fromRos(*scan_map);
+    }
+  }
+  else
+  {
+    ROS_INFO ("No db name provided; generating features from scratch.");
+    ref_scans_ = generateRefScans();
+  }
+}
+
 
 
 /************************************************************
@@ -337,7 +358,7 @@ void Node::mainLoop (const ros::TimerEvent& e)
     ROS_INFO("Matching scan at %.2f, %.2f, %.2f", x, y, theta);
     // Extract features for this scan
     InterestPointVec pts;
-    boost::shared_ptr<LaserReading> reading = fromRos(*scan_);
+    shared_ptr<LaserReading> reading = fromRos(*scan_);
     detector_->detect(*reading, pts);
     BOOST_FOREACH (InterestPoint* p, pts) 
       p->setDescriptor(descriptor_->describe(*p, *reading));

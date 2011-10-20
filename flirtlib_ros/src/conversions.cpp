@@ -278,6 +278,42 @@ InterestPoint* fromRos (const InterestPointRos& m)
   return pt;
 }
 
+RefScan fromRos (const RefScanRos& m)
+{
+  sm::LaserScan::ConstPtr scan(new sm::LaserScan(m.scan));
+  InterestPointVec pts;
+  BOOST_FOREACH (const InterestPointRos& p, m.pts)
+    pts.push_back(fromRos(p));
+  return RefScan(scan, m.pose, pts);
+}
+
+RefScanRos toRos (const RefScan& ref)
+{
+  RefScanRos m;
+
+  m.scan = *ref.scan;
+  m.pose = ref.pose;
+  BOOST_FOREACH (const InterestPoint* p, ref.pts) 
+    m.pts.push_back(toRos(*p));
+  return m;
+}
+
+vector<RefScan> fromRos (const ScanMap& scan_map)
+{
+  vector<RefScan> scans;
+  BOOST_FOREACH (const RefScanRos& scan, scan_map.scans) 
+    scans.push_back(fromRos(scan));
+  return scans;
+}
+
+ScanMap toRos (const std::vector<RefScan>& scans)
+{
+  ScanMap m;
+  BOOST_FOREACH (const RefScan& scan, scans) 
+    m.scans.push_back(toRos(scan));
+  return m;
+}
+
 
 
 } // namespace

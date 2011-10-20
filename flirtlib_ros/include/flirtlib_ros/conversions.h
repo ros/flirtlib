@@ -40,7 +40,7 @@
 #define FLIRTLIB_ROS_CONVERSIONS_H
 
 #include "flirtlib.h"
-#include <flirtlib_ros/InterestPointRos.h>
+#include <flirtlib_ros/ScanMap.h>
 #include <sensor_msgs/LaserScan.h>
 #include <visualization_msgs/Marker.h>
 #include <geometry_msgs/Pose.h>
@@ -69,6 +69,25 @@ InterestPointRos toRos (const InterestPoint& pt);
 /// Convert a ROS interest point to flirtlib
 /// The caller owns the resulting pointer
 InterestPoint* fromRos (const InterestPointRos& m);
+
+struct RefScan
+{
+  sensor_msgs::LaserScan::ConstPtr scan;
+  geometry_msgs::Pose pose;
+  std::vector<InterestPoint*> pts;
+
+  RefScan (sensor_msgs::LaserScan::ConstPtr scan,
+           const geometry_msgs::Pose& pose,
+           const std::vector<InterestPoint*>& pts) :
+    scan(scan), pose(pose), pts(pts)
+  {}
+};
+
+/// Convert a ScanMap to a set of ref scans
+std::vector<RefScan> fromRos (const ScanMap& scan_map);
+
+/// Convert a vector of RefScan's to a ScanMap
+ScanMap toRos (const std::vector<RefScan>& scans);
 
 
 } // namespace
