@@ -40,9 +40,11 @@
 #define FLIRTLIB_ROS_CONVERSIONS_H
 
 #include "flirtlib.h"
+#include <flirtlib_ros/InterestPointRos.h>
 #include <sensor_msgs/LaserScan.h>
 #include <visualization_msgs/Marker.h>
 #include <geometry_msgs/Pose.h>
+
 
 namespace flirtlib_ros
 {
@@ -60,6 +62,13 @@ visualization_msgs::Marker interestPointMarkers (const std::vector<InterestPoint
 
 /// Markers for a set of poses
 std::vector<visualization_msgs::Marker> poseMarkers (const std::vector<geometry_msgs::Pose>& poses);
+
+/// Convert a flirtlib interest point to InterestPointRos
+InterestPointRos toRos (const InterestPoint& pt);
+
+/// Convert a ROS interest point to flirtlib
+/// The caller owns the resulting pointer
+InterestPoint* fromRos (const InterestPointRos& m);
 
 
 } // namespace

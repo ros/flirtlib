@@ -181,7 +181,102 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const gm::Pose& po
   return m;
 }
 
+inline
+gm::Point toPoint (const Point2D& p)
+{
+  gm::Point pt;
+  pt.x = p.x;
+  pt.y = p.y;
+  return pt;
+}
 
+inline
+Point2D toPoint2D (const gm::Point& p)
+{
+  return Point2D(p.x, p.y);
+}
+
+vector<Vector> toRos (const vector<vector<double> >& h)
+{
+  vector<Vector> m;
+  m.resize(h.size());
+  for (unsigned i=0; i<h.size(); i++)
+  {
+    const vector<double>& v = h[i];
+    Vector& v2 = m[i];
+    vector<double>& vec = v2.vec;
+    vec = v;
+  }
+  return m;
+}
+
+vector<vector<double> > fromRos (const vector<Vector>& m)
+{
+  vector<vector<double> > h;
+  h.resize(m.size());
+  for (unsigned i=0; i<m.size(); i++)
+    h[i] = m[i].vec;
+  return h;
+}
+
+DescriptorRos toRos (const Descriptor* descriptor)
+{
+  const BetaGrid* desc = dynamic_cast<const BetaGrid*>(descriptor);
+  ROS_ASSERT_MSG(desc,"Descriptor was not of type BetaGrid");
+  ROS_ASSERT_MSG(dynamic_cast<const EuclideanDistance<double>*>
+    (desc->getDistanceFunction()),
+                 "Distance function was not of type EuclideanDistance");
+  DescriptorRos m;
+  m.hist = toRos(desc->getHistogram());
+  m.variance = toRos(desc->getVariance());
+  m.hit = toRos(desc->getHit());
+  m.miss = toRos(desc->getMiss());
+  return m;
+}
+
+Descriptor* fromRos (const DescriptorRos& m)
+{
+  BetaGrid* desc = new BetaGrid();
+  desc->setDistanceFunction(new EuclideanDistance<double>());
+  desc->getHistogram() = fromRos(m.hist);
+  desc->getVariance() = fromRos(m.variance);
+  desc->getHit() = fromRos(m.hit);
+  desc->getMiss() = fromRos(m.miss);
+  return desc;
+}
+
+InterestPointRos toRos (const InterestPoint& pt)
+{
+  InterestPointRos m;
+
+  m.pose.x = pt.getPosition().x;
+  m.pose.y = pt.getPosition().y;
+  m.pose.theta = pt.getPosition().theta;
+
+  m.support_points.reserve(pt.getSupport().size());
+  BOOST_FOREACH (const Point2D& p, pt.getSupport()) 
+    m.support_points.push_back(toPoint(p));
+
+  m.scale = pt.getScale();
+  m.scale_level = pt.getScaleLevel();
+  m.descriptor = toRos(pt.getDescriptor());
+  
+  return m;
+}
+
+
+InterestPoint* fromRos (const InterestPointRos& m)
+{
+  OrientedPoint2D pose(m.pose.x, m.pose.y, m.pose.theta);
+  Descriptor* descriptor = fromRos(m.descriptor);
+  InterestPoint* pt = new InterestPoint(pose, m.scale, descriptor);
+  pt->setScaleLevel(m.scale_level);
+  vector<Point2D> support_points(m.support_points.size());
+  transform(m.support_points.begin(), m.support_points.end(),
+            support_points.begin(), toPoint2D);
+  pt->setSupport(support_points);
+  return pt;
+}
 
 
 
