@@ -274,20 +274,23 @@ void Node::initializeRefScans ()
 {
   if (scan_db_.size()>0)
   {
-    mr::MessageCollection<ScanMap> coll(scan_db_, "scans");
+    mr::MessageCollection<RefScanRos> coll(scan_db_, "scans");
     if (coll.count() == 0)
     {
       ROS_INFO ("Didn't find any messages in %s/scans, so generating features.",
                 scan_db_.c_str());
       ref_scans_ = generateRefScans();
       ROS_INFO ("Saving scans");
-      coll.insert(toRos(ref_scans_));
+      BOOST_FOREACH (const RefScan& scan, ref_scans_) 
+        coll.insert(toRos(scan), mr::Metadata("x", scan.pose.position.x,
+                                              "y", scan.pose.position.y));
     }
     else
     {
       ROS_INFO ("Loading scans from %s/scans", scan_db_.c_str());
-      ScanMap::ConstPtr scan_map = coll.pullAllResults(mr::Query(), false)[0];
-      ref_scans_ = fromRos(*scan_map);
+      ROS_ASSERT(ref_scans_.size()==0);
+      BOOST_FOREACH (const RefScanRos::ConstPtr m, coll.queryResults(mr::Query(), false))
+        ref_scans_.push_back(fromRos(*m));
     }
   }
   else
@@ -370,7 +373,7 @@ void Node::mainLoop (const ros::TimerEvent& e)
     {
       Correspondences matches;
       OrientedPoint2D transform;
-      ransac_->matchSets(ref_scan.pts, pts, transform, matches);
+      ransac_->matchSets(ref_scan.raw_pts, pts, transform, matches);
       if (matches.size() > num_matches_required_)
       {
         ROS_INFO ("Found %zu matches with ref scan at %.2f, %.2f, %.2f.  "

@@ -70,18 +70,27 @@ InterestPointRos toRos (const InterestPoint& pt);
 /// The caller owns the resulting pointer
 InterestPoint* fromRos (const InterestPointRos& m);
 
+/// Holds a scan with pose as well as interest points
+/// Wraps the interest points pointers in a shared pointer so they get freed
+/// when done
 struct RefScan
 {
   sensor_msgs::LaserScan::ConstPtr scan;
   geometry_msgs::Pose pose;
-  std::vector<InterestPoint*> pts;
+  std::vector<boost::shared_ptr<InterestPoint> > pts;
+  std::vector<InterestPoint*> raw_pts;
 
   RefScan (sensor_msgs::LaserScan::ConstPtr scan,
            const geometry_msgs::Pose& pose,
-           const std::vector<InterestPoint*>& pts) :
-    scan(scan), pose(pose), pts(pts)
-  {}
+           std::vector<InterestPoint*>& pts);
+
 };
+
+/// Convert a single RefScan to a ROS message
+RefScanRos toRos (const RefScan& r);
+
+/// Convert a single RefScanRos message to a RefScan
+RefScan fromRos (const RefScanRos& r);
 
 /// Convert a ScanMap to a set of ref scans
 std::vector<RefScan> fromRos (const ScanMap& scan_map);
