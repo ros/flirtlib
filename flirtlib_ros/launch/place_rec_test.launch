@@ -22,7 +22,7 @@
     <param name="y0" value="-17.0"/>
     <param name="y1" value="930.0"/>
     <param name="num_matches_required" value="10"/>
-    <param name="scan_db" value="flirtlib"/>
+    <param name="scan_db" value="bag1"/>
   </node>
 
 </launch>

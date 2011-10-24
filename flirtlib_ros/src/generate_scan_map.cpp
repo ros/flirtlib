@@ -141,7 +141,7 @@ Node::Node () :
                                       0.0384, false)),
   scan_sub_(nh_.subscribe("scan", 1, &Node::scanCB, this)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
-  scans_("flirtlib", "scans")
+  scans_(getPrivateParam<string>("scan_db"), "scans")
 {
   ROS_ASSERT_MSG(scans_.count()==0, "Scan collection was not empty");
   scans_.ensureIndex("x");

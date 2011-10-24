@@ -26,6 +26,7 @@ Provides:
         output="screen">
     <param name="pos_inc" value="1.0"/>
     <param name="theta_inc" value="0.8"/>
+    <param name="scan_db" value="bag1"/>
   </node>
 
   <include if="$(arg stage)"
