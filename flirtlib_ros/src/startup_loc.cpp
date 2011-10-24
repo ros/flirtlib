@@ -36,10 +36,10 @@
  * \author Bhaskara Marthi
  */
 
-#define BOOST_NO_HASH
 #include <flirtlib_ros/flirtlib.h>
-
 #include <flirtlib_ros/conversions.h>
+#include <mongo_ros/message_collection.h>
+#include <geometry_msgs/PoseArray.h>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
 #include <boost/thread.hpp>
@@ -47,9 +47,13 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/optional.hpp>
 
+namespace flirtlib_ros
+{
+
 namespace sm=sensor_msgs;
 namespace vm=visualization_msgs;
 namespace gm=geometry_msgs;
+namespace mr=mongo_ros;
 
 using std::string;
 using std::vector;
@@ -58,9 +62,8 @@ typedef boost::mutex::scoped_lock Lock;
 typedef vector<InterestPoint*> InterestPointVec;
 typedef std::pair<InterestPoint*, InterestPoint*> Correspondence;
 typedef vector<Correspondence> Correspondences;
+typedef vector<RefScan> RefScans;
 
-namespace flirtlib_ros
-{
 
 
 /************************************************************
@@ -86,6 +89,7 @@ private:
   // Parameters 
 
   // State
+  RefScans ref_scans_;
 
   // Flirtlib objects
   boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
@@ -98,6 +102,8 @@ private:
   tf::TransformListener tf_;
   ros::Subscriber scan_sub_;
   ros::Publisher marker_pub_;
+  ros::Publisher ref_scan_pose_pub_;
+  mr::MessageCollection<RefScanRos> scans_;
 
 };
 
@@ -166,8 +172,38 @@ Node::Node () :
   ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
                                            0.0384, false)),
   scan_sub_(nh_.subscribe("scan", 1, &Node::scanCB, this)),
-  marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10))
+  marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
+  ref_scan_pose_pub_(nh_.advertise<gm::PoseArray>("ref_scan_poses", 10, true)),
+  scans_(getPrivateParam<string>("scan_db"), "scans")
 {
+  ROS_DEBUG_NAMED ("init", "Initialized startup_loc.  Db contains %u scans.",
+                   scans_.count());
+  initializeRefScans();
+}
+
+gm::Pose makePose (const double x, const double y, const double theta)
+{
+  gm::Pose p;
+  p.position.x = x;
+  p.position.y = y;
+  p.orientation = tf::createQuaternionMsgFromYaw(theta);
+  return p;
+}
+
+void Node::initializeRefScans ()
+{
+  gm::PoseArray poses;
+  poses.header.stamp = ros::Time::now();
+  poses.header.frame_id = "/map";
+  
+  BOOST_FOREACH (mr::MessageWithMetadata<RefScanRos>::ConstPtr m,
+                 scans_.queryResults(mr::Query(), false)) 
+  {
+    ref_scans_.push_back(fromRos(*m));
+    poses.poses.push_back(makePose(m->lookupDouble("x"), m->lookupDouble("y"),
+                                   m->lookupDouble("theta")));
+  }
+  ref_scan_pose_pub_.publish(poses);
 }
 
 
@@ -221,7 +257,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
 
 int main (int argc, char** argv)
 {
-  ros::init(argc, argv, "flirtlib_ros_test");
+  ros::init(argc, argv, "startup_loc");
   flirtlib_ros::Node node;
   ros::spin();
   return 0;

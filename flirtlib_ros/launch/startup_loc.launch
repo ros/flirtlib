@@ -5,8 +5,10 @@ Brings up the startup_loc node.
 Requires:
 - Incoming scans on the base_scan topic.
 - tf transform from base_laser_link to map
+- mongodb running with a scan collection in <scan_db>/scans
 
 Provides:
+- Visualization on visualization_marker and ref_scan_poses
 
 -->
 
@@ -15,6 +17,7 @@ Provides:
   <remap from="scan" to="base_scan"/>
   <node pkg="flirtlib_ros" name="startup_loc" type="startup_loc"
         output="screen">
+    <param name="scan_db" value="bag1"/>
   </node>
 
 </launch>

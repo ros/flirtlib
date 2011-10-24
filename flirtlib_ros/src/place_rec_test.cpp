@@ -403,7 +403,7 @@ void Node::mainLoop (const ros::TimerEvent& e)
 
 int main (int argc, char** argv)
 {
-  ros::init(argc, argv, "flirtlib_ros_test");
+  ros::init(argc, argv, "place_rec_test");
   flirtlib_ros::Node node;
   ros::spin();
   return 0;
