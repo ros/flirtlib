@@ -39,10 +39,21 @@
  */
 
 #include <flirtlib_ros/conversions.h>
+#include <mongo_ros/message_collection.h>
+#include <tf/transform_listener.h>
+#include <visualization_msgs/Marker.h>
 #include <ros/ros.h>
 
 namespace flirtlib_ros
 {
+
+namespace sm=sensor_msgs;
+namespace gm=geometry_msgs;
+namespace mr=mongo_ros;
+namespace vm=visualization_msgs;
+
+typedef boost::mutex::scoped_lock Lock;
+typedef vector<InterestPoint*> InterestPointVec;
 
 class Node
 {
@@ -53,12 +64,17 @@ public:
   
 private:
 
+  bool haveNearbyScan (const gm::Pose& pose) const;
+  gm::Pose getPoseAt (const ros::Time& t) const;
+  RefScanRos extractFeatures (sm::LaserScan::ConstPtr scan,
+                              const gm::Pose& pose);
+
   // Needed during init
   boost::mutex mutex_;
   ros::NodeHandle nh_;
 
   // Parameters
-  const double x_inc_, y_inc_, theta_inc_;
+  const double pos_inc_, theta_inc_;
 
   // Flirtlib objects
   boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
@@ -79,25 +95,143 @@ private:
  * Initialization
  ***********************************************************/
 
+template <class T>
+T getPrivateParam (const string& name)
+{
+  ros::NodeHandle nh("~");
+  T val;
+  const bool found = nh.getParam(name, val);
+  ROS_ASSERT_MSG (found, "Could not find parameter %s", name.c_str());
+  ROS_DEBUG_STREAM_NAMED ("init", "Initialized " << name << " to " << val);
+  return val;
+}
+
+Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
+{
+  const double scale = 5.0;
+  const double dmst = 2.0;
+  const double base_sigma = 0.2;
+  const double sigma_step = 1.4;
+  CurvatureDetector* det = new CurvatureDetector(peak_finder, scale, base_sigma,
+                                                 sigma_step, dmst);
+  det->setUseMaxRange(false);
+  return det;
+}
+
+DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
+{
+  const double min_rho = 0.02;
+  const double max_rho = 0.5;
+  const double bin_rho = 4;
+  const double bin_phi = 12;
+  BetaGridGenerator* gen = new BetaGridGenerator(min_rho, max_rho, bin_rho,
+                                                 bin_phi);
+  gen->setDistanceFunction(dist);
+  return gen;
+}
+
 Node::Node () :
+  pos_inc_(getPrivateParam<double>("pos_inc")), 
+  theta_inc_(getPrivateParam<double>("theta_inc")),
+  peak_finder_(new SimpleMinMaxPeakFinder(0.34, 0.001)),
+  histogram_dist_(new EuclideanDistance<double>()),
+  detector_(createDetector(peak_finder_.get())),
+  descriptor_(createDescriptor(histogram_dist_.get())),
+  ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
+                                      0.0384, false)),
+  scan_sub_(nh_.subscribe("scan", 1, &Node::scanCB, this)),
+  marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
+  scans_("flirtlib", "scans")
 {
   ROS_ASSERT_MSG(scans_.count()==0, "Scan collection was not empty");
-  // Create index by x, y
+  scans_.ensureIndex("x");
+}
+
+/************************************************************
+ * Localization
+ ***********************************************************/
+
+inline
+double angleDist (double t1, double t2)
+{
+  if (t2<t1)
+    swap(t1,t2);
+  const double d = t2-t1;
+  return std::min(d, 6.2832-d);
+}
+
+bool Node::haveNearbyScan (const gm::Pose& pose) const
+{
+  using mongo::GT;
+  using mongo::LT;
+  
+  bool found = false;
+  const double x = pose.position.x;
+  const double y = pose.position.y;
+  const double theta = tf::getYaw(pose.orientation);
+
+  // Query for scans in a box around current pose
+  mongo::Query q = BSON("x" << GT << x-pos_inc_ << LT << x+pos_inc_ <<
+                        "y" << GT << y-pos_inc_ << LT << y+pos_inc_);
+  BOOST_FOREACH (mr::MessageWithMetadata<RefScanRos>::ConstPtr scan,
+                 scans_.queryResults(q, true))
+  {
+    // Also check angle distance
+    if (angleDist(theta, scan->lookupDouble("theta")) < theta_inc_)
+      found = true;
+  }
+  return found;
+}
+
+gm::Pose Node::getPoseAt (const ros::Time& t) const
+{
+  tf::StampedTransform trans;
+  tf_.waitForTransform("/map", "base_laser_link", t, ros::Duration(0.5));
+  tf_.lookupTransform("/map", "base_laser_link", t, trans);
+  gm::Pose pose;
+  tf::poseTFToMsg(trans, pose);
+  return pose;
 }
 
 /************************************************************
  * Processing scans
  ***********************************************************/
 
+RefScanRos Node::extractFeatures (sm::LaserScan::ConstPtr scan,
+                                  const gm::Pose& pose)
+{
+  boost::shared_ptr<LaserReading> reading = fromRos(*scan);
+  InterestPointVec pts;
+  detector_->detect(*reading, pts);
+  BOOST_FOREACH (InterestPoint* p, pts) 
+    p->setDescriptor(descriptor_->describe(*p, *reading));
+  marker_pub_.publish(interestPointMarkers(pts, pose));
+  const RefScan ref(scan, pose, pts);
+  return toRos(ref);
+}
+
+
 void Node::scanCB (sm::LaserScan::ConstPtr scan)
 {
-  const gm::Pose pose = getCurrentPose();
-  if (haveNearbyPose(scans_, pose))
-    return;
+  try
+  {
+    const gm::Pose pose = getPoseAt(scan->header.stamp); // can throw
+    if (haveNearbyScan(pose))
+      return;
 
-  // Now guaranteed no nearby pose
-  scans_.insert(extractFeatures(scan, pose),
-                mr::Metadata("x", pose.position.x, "y", pose.position.y));
+    // Now guaranteed no nearby pose
+    const double x = pose.position.x;
+    const double y = pose.position.y;
+    const double th = tf::getYaw(pose.orientation);
+    
+    scans_.insert(extractFeatures(scan, pose),
+                  mr::Metadata("x", x, "y", y, "theta", th));
+    ROS_DEBUG_NAMED ("save_scan", "Saved scan at %.2f, %.2f, %.2f", x, y, th);
+  }
+  catch (tf::TransformException& e)
+  {
+    ROS_INFO ("Skipping callback due to tf error: '%s'", e.what());
+  }
   
 }
 
@@ -106,7 +240,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
 int main (int argc, char** argv)
 {
   ros::init(argc, argv, "generate_scan_map");
-  Node node;
+  flirtlib_ros::Node node;
   ros::spin();
   return 0;
 }

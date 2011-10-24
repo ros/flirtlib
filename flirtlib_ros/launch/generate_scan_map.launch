@@ -1,0 +1,34 @@
+<!--
+Brings up a node that generates a scan map based on the base_scan topic.
+
+Arguments:
+- stage: If true, brings up the stage simulator and nav stack
+
+Requires:
+- mongodb to be running, and that the flirtlib.scans collection is empty
+- incoming scans on base_scan (unless stage is true)
+- tf transform from base_laser_link to map (unless stage is true)
+
+Provides:
+- writes feature-extracted scans (type RefScanRos) to db
+- visualization markers for interest points
+
+
+-->
+
+
+<launch>
+
+  <arg name="stage" default="false"/>
+
+  <remap from="scan" to="base_scan"/>
+  <node pkg="flirtlib_ros" type="generate_scan_map" name="generate_scan_map"
+        output="screen">
+    <param name="pos_inc" value="1.0"/>
+    <param name="theta_inc" value="0.8"/>
+  </node>
+
+  <include if="$(arg stage)"
+           file="$(find navigation_stage)/launch/move_base_fake_localization_5cm.launch"/>
+
+</launch>

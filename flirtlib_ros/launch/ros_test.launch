@@ -1,3 +1,9 @@
+<!--
+Brings up flirtlib_ros_test, which brings up a pair of interactive marker arrows
+representing scanners and simulates scans and extracts features for each one.
+-->
+     
+
 <launch>
 
   <node pkg="flirtlib_ros" type="simulate_scans" name="simulate_scans"
