@@ -40,6 +40,7 @@
 #include <flirtlib_ros/conversions.h>
 #include <mongo_ros/message_collection.h>
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
 #include <boost/thread.hpp>
@@ -86,7 +87,8 @@ private:
   boost::mutex mutex_;
   ros::NodeHandle nh_;
 
-  // Parameters 
+  // Parameters
+  const double min_num_matches_;
 
   // State
   RefScans ref_scans_;
@@ -103,6 +105,8 @@ private:
   ros::Subscriber scan_sub_;
   ros::Publisher marker_pub_;
   ros::Publisher ref_scan_pose_pub_;
+  ros::Publisher match_pose_pub_;
+  ros::Publisher pose_est_pub_;
   mr::MessageCollection<RefScanRos> scans_;
 
 };
@@ -165,6 +169,8 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
 
 Node::Node () :
 
+  min_num_matches_(getPrivateParam<int>("min_num_matches", 10)),
+  
   peak_finder_(createPeakFinder()),
   histogram_dist_(new EuclideanDistance<double>()),
   detector_(createDetector(peak_finder_.get())),
@@ -174,6 +180,8 @@ Node::Node () :
   scan_sub_(nh_.subscribe("scan", 1, &Node::scanCB, this)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   ref_scan_pose_pub_(nh_.advertise<gm::PoseArray>("ref_scan_poses", 10, true)),
+  match_pose_pub_(nh_.advertise<gm::PoseArray>("match_poses", 1)),
+  pose_est_pub_(nh_.advertise<gm::PoseArray>("pose_est", 1)),
   scans_(getPrivateParam<string>("scan_db"), "scans")
 {
   ROS_DEBUG_NAMED ("init", "Initialized startup_loc.  Db contains %u scans.",
@@ -221,6 +229,18 @@ gm::Pose Node::getPose ()
   return pose;
 }
 
+gm::Pose transformPose (const gm::Pose& p, const OrientedPoint2D& trans)
+{
+  btTransform tr;
+  tf::poseMsgToTF(p, tr);
+  btTransform rel(tf::createQuaternionFromYaw(trans.theta),
+                  btVector3(trans.x, trans.y, 0.0));
+  gm::Pose ret;
+  tf::poseTFToMsg(tr*rel, ret);
+  return ret;
+}
+
+
 
 void Node::scanCB (sm::LaserScan::ConstPtr scan)
 {
@@ -233,8 +253,6 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
     const double y=current_pose.position.y;
     ROS_INFO("Matching scan at %.2f, %.2f, %.2f", x, y, theta);
 
-    Lock l(mutex_);
-
     // Extract features for this scan
     InterestPointVec pts;
     boost::shared_ptr<LaserReading> reading = fromRos(*scan);
@@ -242,6 +260,43 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
     BOOST_FOREACH (InterestPoint* p, pts) 
       p->setDescriptor(descriptor_->describe(*p, *reading));
     marker_pub_.publish(interestPointMarkers(pts, current_pose, 0));
+
+    // Match
+    gm::PoseArray match_poses;
+    int best_num_matches = -1;
+    gm::PoseArray best_poses;
+    best_poses.header.frame_id = match_poses.header.frame_id = "/map";
+    best_poses.header.stamp = match_poses.header.stamp = ros::Time::now();
+    ROS_DEBUG_NAMED ("match", "Matching scan at %.2f, %.2f, %.2f", x, y, theta);
+    BOOST_FOREACH (const RefScan& ref_scan, ref_scans_) 
+    {
+      Correspondences matches;
+      OrientedPoint2D trans;
+      ransac_->matchSets(ref_scan.raw_pts, pts, trans, matches);
+      const int num_matches = matches.size();
+      if (num_matches > min_num_matches_)
+      {
+        ROS_DEBUG_NAMED ("match", "Found %d matches with ref scan at "
+                         "%.2f, %.2f, %.2f", num_matches,
+                         ref_scan.pose.position.x, ref_scan.pose.position.y,
+                         tf::getYaw(ref_scan.pose.orientation));
+        match_poses.poses.push_back(ref_scan.pose);
+        best_poses.poses.push_back(transformPose(ref_scan.pose, trans));
+        if (num_matches > best_num_matches)
+        {
+          /*
+          best_num_matches = num_matches;
+          ROS_DEBUG_NAMED ("match", "Transform is %.2f, %.2f, %.2f."
+                           "  Transformed pose is %.2f, %.2f, %.2f",
+                           trans.x, trans.y, trans.theta,
+                           best_pose.pose.position.x, best_pose.pose.position.y,
+                           tf::getYaw(best_pose.pose.orientation));
+          */
+        }
+      }
+    }
+    match_pose_pub_.publish(match_poses);
+    pose_est_pub_.publish(best_poses);
   }
 
   catch (tf::TransformException& e)
@@ -249,8 +304,6 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
     ROS_INFO ("Skipping because of tf exception");
   }
 }
-
-
 
 
 } // namespace

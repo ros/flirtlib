@@ -143,7 +143,7 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const gm::Pose& po
   m.ns = "flirtlib";
   m.id = id;
   m.type = vm::Marker::LINE_LIST;
-  m.scale.x = 0.03;
+  m.scale.x = 0.01;
   m.color = colors[id];
   BOOST_FOREACH (const InterestPoint* p, pts) 
   {
