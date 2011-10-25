@@ -19,7 +19,7 @@ Provides:
   <node pkg="flirtlib_ros" name="startup_loc" type="startup_loc"
         output="screen">
     <param name="scan_db" value="bag1"/>
-    <param name="min_num_matches" value="10"/>
+    <param name="min_num_matches" value="15"/>
   </node>
 
 </launch>

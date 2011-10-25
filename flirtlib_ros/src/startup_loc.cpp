@@ -106,6 +106,7 @@ private:
   ros::Publisher marker_pub_;
   ros::Publisher ref_scan_pose_pub_;
   ros::Publisher match_pose_pub_;
+  ros::Publisher adjusted_pose_pub_;
   ros::Publisher pose_est_pub_;
   mr::MessageCollection<RefScanRos> scans_;
 
@@ -181,7 +182,8 @@ Node::Node () :
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   ref_scan_pose_pub_(nh_.advertise<gm::PoseArray>("ref_scan_poses", 10, true)),
   match_pose_pub_(nh_.advertise<gm::PoseArray>("match_poses", 1)),
-  pose_est_pub_(nh_.advertise<gm::PoseArray>("pose_est", 1)),
+  adjusted_pose_pub_(nh_.advertise<gm::PoseArray>("adjusted_poses", 1)),
+  pose_est_pub_(nh_.advertise<gm::PoseStamped>("pose_estimate", 1)),
   scans_(getPrivateParam<string>("scan_db"), "scans")
 {
   ROS_DEBUG_NAMED ("init", "Initialized startup_loc.  Db contains %u scans.",
@@ -251,7 +253,6 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
     const double theta = tf::getYaw(current_pose.orientation);
     const double x=current_pose.position.x;
     const double y=current_pose.position.y;
-    ROS_INFO("Matching scan at %.2f, %.2f, %.2f", x, y, theta);
 
     // Extract features for this scan
     InterestPointVec pts;
@@ -264,9 +265,12 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
     // Match
     gm::PoseArray match_poses;
     int best_num_matches = -1;
-    gm::PoseArray best_poses;
-    best_poses.header.frame_id = match_poses.header.frame_id = "/map";
-    best_poses.header.stamp = match_poses.header.stamp = ros::Time::now();
+    gm::PoseArray adjusted_poses;
+    gm::PoseStamped best_pose;
+    best_pose.header.frame_id = adjusted_poses.header.frame_id =
+      match_poses.header.frame_id = "/map";
+    best_pose.header.stamp = adjusted_poses.header.stamp =
+      match_poses.header.stamp = ros::Time::now();
     ROS_DEBUG_NAMED ("match", "Matching scan at %.2f, %.2f, %.2f", x, y, theta);
     BOOST_FOREACH (const RefScan& ref_scan, ref_scans_) 
     {
@@ -281,22 +285,23 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
                          ref_scan.pose.position.x, ref_scan.pose.position.y,
                          tf::getYaw(ref_scan.pose.orientation));
         match_poses.poses.push_back(ref_scan.pose);
-        best_poses.poses.push_back(transformPose(ref_scan.pose, trans));
+        gm::Pose adjusted_pose = transformPose(ref_scan.pose, trans);
+        adjusted_poses.poses.push_back(adjusted_pose);
         if (num_matches > best_num_matches)
         {
-          /*
           best_num_matches = num_matches;
           ROS_DEBUG_NAMED ("match", "Transform is %.2f, %.2f, %.2f."
                            "  Transformed pose is %.2f, %.2f, %.2f",
                            trans.x, trans.y, trans.theta,
-                           best_pose.pose.position.x, best_pose.pose.position.y,
-                           tf::getYaw(best_pose.pose.orientation));
-          */
+                           adjusted_pose.position.x, adjusted_pose.position.y,
+                           tf::getYaw(adjusted_pose.orientation));
+          best_pose.pose = adjusted_pose;
         }
       }
     }
     match_pose_pub_.publish(match_poses);
-    pose_est_pub_.publish(best_poses);
+    adjusted_pose_pub_.publish(adjusted_poses);
+    pose_est_pub_.publish(best_pose);
   }
 
   catch (tf::TransformException& e)
