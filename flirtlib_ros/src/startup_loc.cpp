@@ -299,9 +299,12 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
         }
       }
     }
-    match_pose_pub_.publish(match_poses);
-    adjusted_pose_pub_.publish(adjusted_poses);
-    pose_est_pub_.publish(best_pose);
+    if (best_num_matches >= min_num_matches_)
+    {
+      match_pose_pub_.publish(match_poses);
+      adjusted_pose_pub_.publish(adjusted_poses);
+      pose_est_pub_.publish(best_pose);
+    }
   }
 
   catch (tf::TransformException& e)

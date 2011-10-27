@@ -145,6 +145,7 @@ Node::Node () :
 {
   ROS_ASSERT_MSG(scans_.count()==0, "Scan collection was not empty");
   scans_.ensureIndex("x");
+  ROS_INFO ("generate_scan_map initialized");
 }
 
 /************************************************************
