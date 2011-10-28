@@ -20,3 +20,4 @@ Once this is launched, do rosrun flirtlib_ros localize.py to localize the robot 
   </node>
   
 
+</launch>
