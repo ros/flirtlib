@@ -233,12 +233,13 @@ gm::Pose Node::getPose ()
 
 gm::Pose transformPose (const gm::Pose& p, const OrientedPoint2D& trans)
 {
+  btTransform laser_pose(btQuaternion(0, 0, 0, 1), btVector3(-0.275, 0, 0));
   btTransform tr;
   tf::poseMsgToTF(p, tr);
   btTransform rel(tf::createQuaternionFromYaw(trans.theta),
                   btVector3(trans.x, trans.y, 0.0));
   gm::Pose ret;
-  tf::poseTFToMsg(tr*rel, ret);
+  tf::poseTFToMsg(tr*rel*laser_pose, ret);
   return ret;
 }
 
