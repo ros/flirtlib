@@ -18,7 +18,7 @@ Provides:
   <remap from="scan" to="base_scan"/>
   <node pkg="flirtlib_ros" name="startup_loc" type="startup_loc"
         output="screen">
-    <param name="scan_db" value="bag1"/>
+    <param name="scan_db" value="scan_map"/>
     <param name="min_num_matches" value="15"/>
   </node>
 
