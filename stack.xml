@@ -9,6 +9,6 @@
   <depend stack="ros" />
   <depend stack="ros_comm" /> <!-- roscpp -->
   <depend stack="warehousewg" />
-  <depend package="visualization"/>
+  <depend stack="visualization"/>
 
 </stack>
