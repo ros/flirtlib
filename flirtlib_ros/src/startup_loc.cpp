@@ -169,11 +169,12 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
   return gen;
 }
 
-btTransform Node::loadLaserOffset ()
+btTransform loadLaserOffset ()
 {
-  return btTransform(tf::createQuaternionFromYaw(getPrivateParam<double>("laser_offset_yaw", 0.0)),
-                     btVector3(getPrivateParam<double>("laser_offset_x", 0.0),
-                               getPrivateParam<double>("laser_offset_y", 0.0), 0.0));    
+  const double yaw = getPrivateParam<double>("laser_offset_yaw", 0.0);
+  const double x = getPrivateParam<double>("laser_offset_x", 0.0);
+  const double y = getPrivateParam<double>("laser_offset_y", 0.0);
+  return btTransform(tf::createQuaternionFromYaw(yaw), btVector3(x, y, 0));
 }
 
 Node::Node () :
@@ -304,7 +305,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
                          tf::getYaw(ref_scan.pose.orientation));
         match_poses.poses.push_back(ref_scan.pose);
         const gm::Pose laser_pose = transformPose(ref_scan.pose, trans);
-        adjusted_poses.poses.push_back(transformPose(laser_offset_, adjusted_pose));
+        const gm::Pose adjusted_pose = transformPose(laser_offset_, laser_pose);
         if (num_matches > best_num_matches)
         {
           best_num_matches = num_matches;
