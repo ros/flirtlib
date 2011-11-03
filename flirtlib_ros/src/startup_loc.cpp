@@ -89,6 +89,7 @@ private:
 
   // Parameters
   const double min_num_matches_;
+  const btTransform laser_offset_;
 
   // State
   RefScans ref_scans_;
@@ -168,9 +169,18 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
   return gen;
 }
 
+btTransform loadLaserOffset ()
+{
+  const double yaw = getPrivateParam<double>("laser_offset_yaw", 0.0);
+  const double x = getPrivateParam<double>("laser_offset_x", 0.0);
+  const double y = getPrivateParam<double>("laser_offset_y", 0.0);
+  return btTransform(tf::createQuaternionFromYaw(yaw), btVector3(x, y, 0));
+}
+
 Node::Node () :
 
   min_num_matches_(getPrivateParam<int>("min_num_matches", 10)),
+  laser_offset_(loadLaserOffset()),
   
   peak_finder_(createPeakFinder()),
   histogram_dist_(new EuclideanDistance<double>()),
@@ -243,6 +253,15 @@ gm::Pose transformPose (const gm::Pose& p, const OrientedPoint2D& trans)
   return ret;
 }
 
+gm::Pose transformPose (const btTransform& trans, const gm::Pose& pose)
+{
+  btTransform p;
+  tf::poseMsgToTF(pose, p);
+  gm::Pose ret;
+  tf::poseTFToMsg(trans*p, ret);
+  return ret;
+}
+
 
 
 void Node::scanCB (sm::LaserScan::ConstPtr scan)
@@ -286,8 +305,8 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
                          ref_scan.pose.position.x, ref_scan.pose.position.y,
                          tf::getYaw(ref_scan.pose.orientation));
         match_poses.poses.push_back(ref_scan.pose);
-        gm::Pose adjusted_pose = transformPose(ref_scan.pose, trans);
-        adjusted_poses.poses.push_back(adjusted_pose);
+        const gm::Pose laser_pose = transformPose(ref_scan.pose, trans);
+        const gm::Pose adjusted_pose = transformPose(laser_offset_, laser_pose);
         if (num_matches > best_num_matches)
         {
           best_num_matches = num_matches;
@@ -300,11 +319,11 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
         }
       }
     }
-    if (best_num_matches > min_num_matches_)
+    if (best_num_matches >= min_num_matches_)
     {
-    match_pose_pub_.publish(match_poses);
-    adjusted_pose_pub_.publish(adjusted_poses);
-    pose_est_pub_.publish(best_pose);
+      match_pose_pub_.publish(match_poses);
+      adjusted_pose_pub_.publish(adjusted_poses);
+      pose_est_pub_.publish(best_pose);
     }
   }
 

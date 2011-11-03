@@ -1,0 +1,23 @@
+<!--
+
+Brings up flirtlib on the willow map.
+Once this is launched, do rosrun flirtlib_ros localize.py to localize the robot and send the result to amcl.
+
+-->
+
+<launch>
+
+  <node pkg="mongodb" type="wrapper.py">
+    <param name="database_path" value="$(find wg_flirtlib)/build/prl"/>
+    <param name="overwrite" value="false"/>
+  </node>
+
+  <remap from="scan" to="base_scan"/>
+  <node pkg="flirtlib_ros" name="startup_loc" type="startup_loc"
+        output="screen">
+    <param name="scan_db" value="scan_map"/>
+    <param name="min_num_matches" value="15"/>
+  </node>
+  
+
+</launch>

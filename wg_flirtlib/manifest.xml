@@ -1,0 +1,13 @@
+<package>
+  <description brief="wg_flirtlib">
+    Launch files and data for using flirtlib in willow garage map
+  </description>
+  <author>Bhaskara Marthi</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/wg_flirtlib</url>
+  <depend package="flirtlib_ros"/>
+
+</package>
+
+

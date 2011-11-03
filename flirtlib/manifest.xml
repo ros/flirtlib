@@ -8,8 +8,8 @@ Pulls in the 3rd party flirtlib package
   <url>http://ros.org/wiki/flirtlib</url>
 
   <export>
-    <cpp cflags="-I${prefix}/build/FLIRTLib/src"
-         lflags="-Wl,-rpath,${prefix}/build/FLIRTLib/lib64 -L${prefix}/build/FLIRTLib/lib64 -Wl,-rpath,${prefix}/build/FLIRTLib/lib -L${prefix}/build/FLIRTLib/lib -lfeature -lgeometry -lsensors -lsensorstream -lutils"/>
+    <cpp cflags="-I${prefix}/FLIRTLib/src"
+         lflags="-Wl,-rpath,${prefix}/FLIRTLib/lib64 -L${prefix}/FLIRTLib/lib64 -Wl,-rpath,${prefix}/FLIRTLib/lib -L${prefix}/FLIRTLib/lib -lfeature -lgeometry -lsensors -lsensorstream -lutils"/>
   </export>
 
 </package>

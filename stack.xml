@@ -1,12 +1,14 @@
 <stack>
-  <description brief="startup_loc">startup_loc</description>
+  <description brief="flirtlib_features">place recognition using 2d features on laser scans</description>
   <author>Maintained by Bhaskara Marthi</author>
   <license>BSD</license>  
   <review status="unreviewed" notes=""/>
-  <url>http://ros.org/wiki/startup_loc</url>
+  <url>http://ros.org/wiki/flirtlib_features</url>
   <depend stack="geometry" /> <!-- tf -->
-  <depend stack="graph_mapping" /> <!-- occupancy_grid_utils -->
+  <depend stack="occupancy_grid_utils" /> <!-- occupancy_grid_utils -->
   <depend stack="ros" />
   <depend stack="ros_comm" /> <!-- roscpp -->
+  <depend stack="warehousewg" />
+  <depend stack="visualization"/>
 
 </stack>
