@@ -11,6 +11,7 @@ include $(shell rospack find mk)/download_unpack_build.mk
 
 flirtlib: $(SOURCE_DIR)/unpacked
 	cd $(SOURCE_DIR)/src; echo $(PWD); cmake .; make
+	cp -R $(SOURCE_DIR) .
 
 clean: 
 	rm -rf build
