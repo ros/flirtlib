@@ -7,8 +7,8 @@ Once this is launched, do rosrun flirtlib_ros localize.py to localize the robot 
 
 <launch>
 
-  <node pkg="mongodb" type="wrapper.py">
-    <param name="database_path" value="$(find wg_flirtlib)/build/prl"/>
+  <node pkg="mongodb" type="wrapper.py" name="mongo_server">
+    <param name="database_path" value="$(find wg_flirtlib)/prl"/>
     <param name="overwrite" value="false"/>
   </node>
 

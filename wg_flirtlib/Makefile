@@ -9,6 +9,8 @@ MD5SUM_FILE = willow.md5
 include $(shell rospack find mk)/download_unpack_build.mk
 
 maps: $(SOURCE_DIR)/unpacked
+	rm -rf prl
+	mv ${SOURCE_DIR} prl
 
 clean: 
 	rm -rf build
