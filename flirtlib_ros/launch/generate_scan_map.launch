@@ -7,7 +7,7 @@ Arguments:
   Defaults to scan_map.  
 
 Requires:
-- mongodb to be running, and that the flirtlib.scans collection is empty
+- mongodb to be running, and that the <db_name>.scans collection is empty
 - incoming scans on base_scan (unless stage is true)
 - tf transform from base_laser_link to map (unless stage is true)
 
