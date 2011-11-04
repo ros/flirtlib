@@ -1,0 +1,9 @@
+# Goal is to get close to yaw angle target in frame header.frame_id
+Header header
+float32 target
+float32 tol
+---
+# Result is yaw we think we achieved
+float32 achieved
+---
+# No feedback

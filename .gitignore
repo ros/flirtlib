@@ -2,3 +2,10 @@
 /flirtlib_ros/src/flirtlib_ros
 /flirtlib/FLIRTLib
 /wg_flirtlib/prl
+/flirtlib_ros/msg/RotateInPlaceAction.msg
+/flirtlib_ros/msg/RotateInPlaceActionFeedback.msg
+/flirtlib_ros/msg/RotateInPlaceActionGoal.msg
+/flirtlib_ros/msg/RotateInPlaceActionResult.msg
+/flirtlib_ros/msg/RotateInPlaceFeedback.msg
+/flirtlib_ros/msg/RotateInPlaceGoal.msg
+/flirtlib_ros/msg/RotateInPlaceResult.msg
