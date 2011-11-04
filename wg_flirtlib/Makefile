@@ -1,4 +1,4 @@
-all: maps
+all: 
 
 FILENAME = willow.tar.gz
 TARBALL = build/$(FILENAME)
@@ -11,6 +11,7 @@ include $(shell rospack find mk)/download_unpack_build.mk
 maps: $(SOURCE_DIR)/unpacked
 	rm -rf prl
 	mv ${SOURCE_DIR} prl
+
 
 clean: 
 	rm -rf build
