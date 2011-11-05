@@ -196,9 +196,10 @@ Node::Node () :
   pose_est_pub_(nh_.advertise<gm::PoseStamped>("pose_estimate", 1)),
   scans_(getPrivateParam<string>("scan_db"), "scans")
 {
-  ROS_DEBUG_NAMED ("init", "Initialized startup_loc.  Db contains %u scans.",
+  ROS_DEBUG_NAMED ("init", "Db contains %u scans.",
                    scans_.count());
   initializeRefScans();
+  ROS_INFO ("Startup loc initialized");
 }
 
 gm::Pose makePose (const double x, const double y, const double theta)
@@ -215,10 +216,12 @@ void Node::initializeRefScans ()
   gm::PoseArray poses;
   poses.header.stamp = ros::Time::now();
   poses.header.frame_id = "/map";
+  unsigned i=0;
   
   BOOST_FOREACH (mr::MessageWithMetadata<RefScanRos>::ConstPtr m,
                  scans_.queryResults(mr::Query(), false)) 
   {
+    ROS_DEBUG_NAMED("init", "Reading scan %u", i);
     ref_scans_.push_back(fromRos(*m));
     poses.poses.push_back(makePose(m->lookupDouble("x"), m->lookupDouble("y"),
                                    m->lookupDouble("theta")));

@@ -80,7 +80,7 @@ private:
 RotateInPlace::RotateInPlace () :
   private_nh_("~"),
   as_(nh_, "rotate_in_place", boost::bind(&RotateInPlace::execute, this, _1)),
-  vel_pub_(nh_.advertise<gm::Twist>("cmd_vel", 1))
+  vel_pub_(nh_.advertise<gm::Twist>("navigation/cmd_vel", 1))
 {
   pid_.init(private_nh_);
   double p, i, d, i_min, i_max;
@@ -108,11 +108,21 @@ void RotateInPlace::execute (const RotateInPlaceGoal::ConstPtr& goal)
   ros::Duration d(0.1);
   pid_.updatePid(0, d); // for stability
   
-  while (true) {
+  ROS_DEBUG_STREAM_NAMED ("rotate_client", "Waiting for transform");
+  tf_.waitForTransform(goal->header.frame_id, "base_footprint", ros::Time::now(), ros::Duration(2.0));
+  ROS_DEBUG_STREAM_NAMED ("rotate_client", "Found");
+  
+  while (ros::ok()) {
     const double current = currentOrientation(goal->header.frame_id);
     if (fabs(current-goal->target) < goal->tol) {
       result.achieved = current;
       break;
+    }
+    if (as_.isPreemptRequested()) 
+    {
+      result.achieved = current;
+      as_.setPreempted();
+      return;
     }
     gm::Twist vel;
     vel.angular.z = pid_.updatePid(current-goal->target, d);

@@ -40,6 +40,9 @@ import rospy
 import geometry_msgs.msg as gm
 import std_msgs.msg as std
 import threading
+import sys
+import actionlib as al
+from flirtlib_ros import msg
 
 
 
@@ -49,6 +52,13 @@ class Node:
         self.lock = threading.Lock()
         self.pose = None
         self.done = False
+        self.client = al.SimpleActionClient('rotate_in_place',
+                msg.RotateInPlaceAction)
+        rospy.loginfo("Waiting for action client")
+        self.client.wait_for_server()
+        rospy.loginfo("Found")
+        self.rotating = False
+        
         with self.lock:
             self.pose_sub = rospy.Subscriber('pose_estimate', gm.PoseStamped,
                                             self.save_pose)
@@ -56,9 +66,41 @@ class Node:
 
     def save_pose(self, m):
         with self.lock:
-            if not self.done:
+            if not self.rotating and not self.done:
                 self.pub.publish(header=m.header, pose=gm.PoseWithCovariance(pose=m.pose))
                 self.done = True
+                rospy.sleep(1.0)
+                rospy.loginfo("Found a good pose; exiting")
+                rospy.signal_shutdown("Pose found")
+                
+
+    def metaphorically_spin(self):
+        for i in xrange(15):
+            rospy.sleep(1.0)
+            if rospy.is_shutdown():
+                break
+        if not rospy.is_shutdown():
+            rospy.loginfo("Didn't find a good localization within 10 seconds")
+        
+
+    def literally_spin(self):
+        for i in xrange(10):
+            rospy.sleep(1.5)
+            if rospy.is_shutdown():
+                break
+            yaw = i*0.628
+            rospy.loginfo ("Rotating to {0}".format(yaw))
+            goal = msg.RotateInPlaceGoal(target=yaw, tol=0.1)
+            goal.header.frame_id='odom_combined'
+            self.rotating = True
+            self.client.send_goal_and_wait(goal)
+            rospy.sleep(0.1)
+            self.rotating = False
+        if not rospy.is_shutdown():
+            rospy.loginfo("Didn't find a good localization after rotating")
+        self.client.cancel_all_goals()
+
+
     
     
 
@@ -66,4 +108,7 @@ class Node:
 if __name__ == "__main__":
     rospy.init_node('global_localization')
     node = Node()
-    rospy.spin()
+    if '--active' in sys.argv:
+        node.literally_spin()
+    else:
+        node.metaphorically_spin()
