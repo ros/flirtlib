@@ -1,17 +1,13 @@
 all: flirtlib
 
-FILENAME = FLIRTLib.tgz
-TARBALL = build/$(FILENAME)
-TARBALL_URL = http://pr.willowgarage.com/downloads/$(FILENAME)
-SOURCE_DIR = build/FLIRTLib
-MD5SUM_FILE = flirtlib.md5
+SVN_REVISION = -r 6
+SVN_URL = https://svn.openslam.org/data/svn/flirtlib
+SVN_DIR = build/FLIRTLib
 
-include $(shell rospack find mk)/download_unpack_build.mk
+include $(shell rospack find mk)/svn_checkout.mk
 
-
-flirtlib: $(SOURCE_DIR)/unpacked
-	cd $(SOURCE_DIR)/src; echo $(PWD); cmake .; make
-	cp -R $(SOURCE_DIR) .
+flirtlib: download
+	cd $(SVN_DIR)/trunk/src; echo $(PWD); cmake .; make
 
 clean: 
 	rm -rf build
