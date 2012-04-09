@@ -1,0 +1,33 @@
+Index: trunk/src/feature/CurvatureDetector.cpp
+===================================================================
+--- trunk/src/feature/CurvatureDetector.cpp	(revision 6)
++++ trunk/src/feature/CurvatureDetector.cpp	(working copy)
+@@ -112,15 +112,15 @@
+     
+     unsigned int vertexNumber = boost::num_vertices(graph);
+     std::vector< std::vector< double > > distances(vertexNumber, std::vector<double>(vertexNumber));
++    std::vector< std::vector< double > > weights(vertexNumber, std::vector<double>(vertexNumber));
++    
+     boost::johnson_all_pairs_shortest_paths(graph, distances);
+-   
+     for(unsigned int scale = 0; scale < m_scales.size(); scale++){
+ 		double currentScale = m_scales[scale];
+ 		double normalizer = sqrt(2*M_PI)*currentScale;
+ 		std::vector<double> densities(vertexNumber, 0.);
+ 		operatorA[scale].resize(vertexNumber, Point2D());
+ 		signalDiff[scale].resize(vertexNumber,0.);
+-		double weights[vertexNumber][vertexNumber];
+ 		double weightNormalizer[vertexNumber];
+ 		for(unsigned int vertex1 = 0; vertex1 < vertexNumber; vertex1++){
+ 			for(unsigned int vertex2 = 0; vertex2 < vertexNumber; vertex2++){
+@@ -206,8 +206,8 @@
+ 				if(hypot(diff2.x, diff2.y) < distance) support.push_back(worldPoints[k]);
+ 			}
+ 
+-	    LineParameters param = computeNormals(support);
+-	    pose.theta = normAngle(param.alpha, - M_PI);    
++                        //LineParameters param = computeNormals(support);
++                        //pose.theta = normAngle(param.alpha, - M_PI);    
+ 	    
+ 			InterestPoint *interest = new InterestPoint(pose, distance);
+ 		//  InterestPoint *interest = new InterestPoint(pose, m_scales[i]);

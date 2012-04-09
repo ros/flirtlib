@@ -1,4 +1,20 @@
+<!--
+  To run:
+  - launch this file
+  - rosrun rviz rviz -d `rospack find flirtlib_ros`/rviz/flirtlib.vcg
+
+  This generates a scan map from a map by simulating scans.
+  Once this is done, click on 'interact' in rviz, then move the purple
+  arrow.  A scan will be simulated from that pose, and all matching
+  reference scans will be visualized (as green arrows).
+  
+  Note: matching will only happen after the ref scans have been
+  initialized.  A message will be printed on stdout of the form
+  "Generated 2590 scans" when this is done.
+-->
 <launch>
+  
+  <arg name="run_db" default="true"/>
 
   <node pkg="flirtlib_ros" type="simulate_scans" name="simulate_scans"
         output="screen">
@@ -13,7 +29,7 @@
 
   <node pkg="flirtlib_ros" name="place_rec_test" type="place_rec_test"
         output="screen">
-    <param name="map_file" value="$(find navigation_stage)/stage_config/maps/willow-full-0.05.pgm"/>
+    <param name="map_file" value="$(find willow_maps)/willow-full-0.05.pgm"/>
     <param name="resolution" value="0.05"/>
     <param name="ref_pos_resolution" value="2.0"/>
     <param name="ref_angle_resolution" value="1.0"/>
@@ -24,5 +40,10 @@
     <param name="num_matches_required" value="10"/>
     <param name="scan_db" value="bag1"/>
   </node>
-
+  
+  <node if="$(arg run_db)" pkg="mongodb" type="wrapper.py"
+        name="place_rec_db">
+    <param name="database_path" value="/tmp/place_rec_test"/>
+    <param name="overwrite" value="true"/>
+  </node>
 </launch>

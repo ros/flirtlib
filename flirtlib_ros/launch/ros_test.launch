@@ -4,7 +4,9 @@ representing scanners and simulates scans and extracts features for each one.
 
 Instructions:
 1. roslaunch flirtlib_ros ros_test.launch
-2. rosrun rviz rviz `rospack find flirtlib_ros`/rviz/flirtlib.vcg
+2. rosrun rviz rviz -d `rospack find flirtlib_ros`/rviz/flirtlib.vcg
+3. In rviz, click on 'interact' and drag the two arrows representing scanners around
+   to see the scans and interest points move
 
 -->
      
@@ -12,12 +14,17 @@ Instructions:
 <launch>
 
   <param name="use_sim_time" value="false"/>
+  <arg name="map_file" value="$(find willow_maps)/willow-full-0.025.pgm"/>
   <node pkg="flirtlib_ros" type="simulate_scans" name="simulate_scans"
         output="screen">
     <param name="num_lasers" value="2"/>
-    <param name="map_file" value="$(find willow_maps)/willow-full-0.025.pgm"/>
+    <param name="map_file" value="$(arg map_file)"/>
     <param name="resolution" value="0.025"/>
   </node>
+  
+  <node pkg="map_server" type="map_server" name="map_server"
+        args="$(arg map_file) 0.025"/>
+  
 
   <node pkg="flirtlib_ros" name="flirtlib_ros_test" type="flirtlib_ros_test"
         output="screen"/>

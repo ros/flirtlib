@@ -147,9 +147,9 @@ SimpleMinMaxPeakFinder* createPeakFinder ()
 
 Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
 {
-  const double scale = 5.0;
+  const double scale = 7.0;
   const double dmst = 2.0;
-  const double base_sigma = 0.2;
+  const double base_sigma = 0.1;
   const double sigma_step = 1.4;
   CurvatureDetector* det = new CurvatureDetector(peak_finder, scale, base_sigma,
                                                  sigma_step, dmst);
@@ -186,7 +186,7 @@ Node::Node () :
   histogram_dist_(new SymmetricChi2Distance<double>()),
   detector_(createDetector(peak_finder_.get())),
   descriptor_(createDescriptor(histogram_dist_.get())),
-  ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
+  ransac_(new RansacFeatureSetMatcher(0.0599, 0.98, 0.4, 0.4,
                                            0.0384, false)),
   scan_sub_(nh_.subscribe("scan", 1, &Node::scanCB, this)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),

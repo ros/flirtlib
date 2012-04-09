@@ -4,17 +4,23 @@ Brings up a node that generates a scan map based on the base_scan topic.
 Arguments:
 - stage: If true, brings up the stage simulator and nav stack
 - db_name: the name of the db within the instance.  Use if storing multiple maps in the same instance.
-  Defaults to scan_map.  
+  Defaults to scan_map.  Alternatively, set the db_path argument to a nonempty value, in which
+  case the db server will be brought up by this node (any existing db at that location will be
+  removed).
+- run_db: whether to start up a db server.  Defaults to false.
+- db_path: Needs to be set iff run_db is true.  A new db will be created here.
 
 Requires:
-- mongodb to be running, and that the <db_name>.scans collection is empty
+- either run_db is true, or mongodb is running, and the <db_name>.scans collection is empty
+  (see wrapper.py in the mongodb package)
 - incoming scans on base_scan (unless stage is true)
 - tf transform from base_laser_link to map (unless stage is true)
+- The navigation_tutorials ros stack to be installed 
 
 Provides:
-- writes feature-extracted scans (type RefScanRos) to db
+- writes feature-extracted scans (type RefScanRos) to db.  A scan will be saved whenever the
+  robot is sufficiently far from existing positions.
 - visualization markers for interest points
-
 -->
 
 
@@ -22,6 +28,8 @@ Provides:
 
   <arg name="stage" default="false"/>
   <arg name="db_name" default="scan_map"/>
+  <arg name="run_db" default="false"/>
+  <arg name="db_path" default=""/>
 
   <remap from="scan" to="base_scan"/>
   <node pkg="flirtlib_ros" type="generate_scan_map" name="generate_scan_map"
@@ -33,5 +41,10 @@ Provides:
 
   <include if="$(arg stage)"
            file="$(find navigation_stage)/launch/move_base_fake_localization_5cm.launch"/>
+  
+  <node if="$(arg run_db)" pkg="mongodb" type="wrapper.py" name="scan_map_db_node">
+    <param name="database_path" value="$(arg db_path)"/>
+    <param name="overwrite" value="true"/>
+  </node>
 
 </launch>

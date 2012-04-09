@@ -245,7 +245,7 @@ RefScans Node::generateRefScans() const
           continue;
         if (grid->data[cellIndex(grid->info, c)]!=gu::UNOCCUPIED)
           continue;
-        ROS_INFO_THROTTLE (0.1, "Pos: %.2f, %.2f", pose.position.x,
+        ROS_INFO_THROTTLE (0.3, "Pos: %.2f, %.2f", pose.position.x,
                            pose.position.y);
         
         // Simulate scan

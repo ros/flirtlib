@@ -2,24 +2,38 @@
 
 Brings up the startup_loc node.
 
+Args:
+- run_db: whether to bring up db node.  Defaults to false.
+- db_path: needed iff run_db is true.  Db node will use existing db at this location.
+
 Requires:
 - Incoming scans on the base_scan topic.
 - tf transform from base_laser_link to map
 - mongodb running with a scan collection in <scan_db>/scans
 
 Provides:
-- Visualization on visualization_marker, ref_scan_poses
-- Topic match_poses holds current best matches
+- topic visualization_marker: feature points
+- Topic ref_scan_poses (PoseArray): reference scans
+- Topic match_poses (PoseArray): matching scans for current pose
 
 -->
 
 <launch>
+  
+  <arg name="run_db" default="false"/>
+  <arg name="db_path" default=""/>
 
   <remap from="scan" to="base_scan"/>
   <node pkg="flirtlib_ros" name="startup_loc" type="startup_loc"
         output="screen">
     <param name="scan_db" value="scan_map"/>
     <param name="min_num_matches" value="15"/>
+  </node>
+  
+  <node pkg="mongodb" type="wrapper.py" name="startup_loc_db"
+        if="$(arg run_db)">
+    <param name="database_path" value="$(arg db_path)"/>
+    <param name="overwrite" value="false"/>
   </node>
 
 </launch>
