@@ -170,7 +170,7 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
 
 Node::Node () :
   scan_(2), peak_finder_(createPeakFinder()),
-  histogram_dist_(new EuclideanDistance<double>()),
+  histogram_dist_(new SymmetricChi2Distance<double>()),
   detector_(createDetector(peak_finder_.get())),
   descriptor_(createDescriptor(histogram_dist_.get())),
   ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,

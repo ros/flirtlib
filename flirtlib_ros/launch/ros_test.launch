@@ -1,11 +1,17 @@
 <!--
 Brings up flirtlib_ros_test, which brings up a pair of interactive marker arrows
 representing scanners and simulates scans and extracts features for each one.
+
+Instructions:
+1. roslaunch flirtlib_ros ros_test.launch
+2. rosrun rviz rviz `rospack find flirtlib_ros`/rviz/flirtlib.vcg
+
 -->
      
 
 <launch>
 
+  <param name="use_sim_time" value="false"/>
   <node pkg="flirtlib_ros" type="simulate_scans" name="simulate_scans"
         output="screen">
     <param name="num_lasers" value="2"/>

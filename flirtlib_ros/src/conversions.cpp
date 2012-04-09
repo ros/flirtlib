@@ -223,9 +223,9 @@ DescriptorRos toRos (const Descriptor* descriptor)
 {
   const BetaGrid* desc = dynamic_cast<const BetaGrid*>(descriptor);
   ROS_ASSERT_MSG(desc,"Descriptor was not of type BetaGrid");
-  ROS_ASSERT_MSG(dynamic_cast<const EuclideanDistance<double>*>
+  ROS_ASSERT_MSG(dynamic_cast<const SymmetricChi2Distance<double>*>
     (desc->getDistanceFunction()),
-                 "Distance function was not of type EuclideanDistance");
+                 "Distance function was not of type SymmetricChi2Distance");
   DescriptorRos m;
   m.hist = toRos(desc->getHistogram());
   m.variance = toRos(desc->getVariance());
@@ -237,7 +237,7 @@ DescriptorRos toRos (const Descriptor* descriptor)
 Descriptor* fromRos (const DescriptorRos& m)
 {
   BetaGrid* desc = new BetaGrid();
-  desc->setDistanceFunction(new EuclideanDistance<double>());
+  desc->setDistanceFunction(new SymmetricChi2Distance<double>());
   desc->getHistogram() = fromRos(m.hist);
   desc->getVariance() = fromRos(m.variance);
   desc->getHit() = fromRos(m.hit);
