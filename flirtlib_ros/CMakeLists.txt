@@ -41,5 +41,5 @@ rosbuild_add_executable(startup_loc src/startup_loc.cpp)
 target_link_libraries(startup_loc grid_utils)
 target_link_libraries(startup_loc flirtlib_ros)
 
-rosbuild_add_executable(rotate_in_place src/rotate_in_place.cpp)
-target_link_libraries(rotate_in_place tinyxml)
+//rosbuild_add_executable(rotate_in_place src/rotate_in_place.cpp)
+//target_link_libraries(rotate_in_place tinyxml)
