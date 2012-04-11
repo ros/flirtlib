@@ -15,7 +15,6 @@ ROS wrapper for FLIRTLib 3rd party package
   <depend package="interactive_markers"/>
   <depend package="mongo_ros"/>
   <depend package="actionlib"/>
-  <depend package="control_toolbox"/>
   
 </package>
 
