@@ -61,6 +61,9 @@ using boost::shared_ptr;
 typedef boost::mutex::scoped_lock Lock;
 typedef mr::MessageWithMetadata<RefScanRos>::ConstPtr DBScan;
 typedef vector<InterestPoint*> InterestPointVec;
+typedef std::pair<InterestPoint*, InterestPoint*> Correspondence;
+typedef vector<Correspondence> Correspondences;
+typedef vector<RefScan> RefScans;
 
 class Node
 {
@@ -75,11 +78,11 @@ public:
 private:
   
   gm::Pose getPose ();
-  RefScanRos extractFeatures (sm::LaserScan::ConstPtr scan,
+  InterestPointVec extractFeatures (sm::LaserScan::ConstPtr scan,
                               const gm::Pose& pose) const;
 
   void updateLocalized (sm::LaserScan::ConstPtr scan);
-  void updateUnlocalized ();
+  void updateUnlocalized (sm::LaserScan::ConstPtr scan);
   
   // Needed during init
   boost::mutex mutex_;
@@ -94,6 +97,7 @@ private:
 
   shared_ptr<ScanPoseEvaluator> evaluator_;
   bool previously_matched_;
+  vector<RefScan> ref_scans_; // local copy of db scans
 
   mr::MessageCollection<RefScanRos> scans_;
   tf::TransformListener tf_;
@@ -170,7 +174,7 @@ gm::Pose Node::getPose ()
   return pose;
 }
 
-RefScanRos Node::extractFeatures (sm::LaserScan::ConstPtr scan,
+InterestPointVec Node::extractFeatures (sm::LaserScan::ConstPtr scan,
                                   const gm::Pose& pose) const
 {
   shared_ptr<LaserReading> reading = fromRos(*scan);
@@ -179,21 +183,75 @@ RefScanRos Node::extractFeatures (sm::LaserScan::ConstPtr scan,
   BOOST_FOREACH (InterestPoint* p, pts) 
     p->setDescriptor(descriptor_->describe(*p, *reading));
   marker_pub_.publish(interestPointMarkers(pts, pose));
-  const RefScan ref(scan, pose, pts);
-  return toRos(ref);
+  return pts;
 }
 
 
 
-void Node::updateUnlocalized ()
+gm::Pose transformPose (const gm::Pose& p, const OrientedPoint2D& trans)
 {
-    ROS_INFO("Not well localized");
-    if (previously_matched_)
-      ROS_INFO("Previously matched, so not doing anything");
-    else
+  tf::Transform laser_pose(tf::Quaternion(0, 0, 0, 1), tf::Vector3(-0.275, 0, 0));
+  tf::Transform tr;
+  tf::poseMsgToTF(p, tr);
+  tf::Transform rel(tf::createQuaternionFromYaw(trans.theta),
+                    tf::Vector3(trans.x, trans.y, 0.0));
+  gm::Pose ret;
+  tf::poseTFToMsg(tr*rel*laser_pose, ret);
+  return ret;
+}
+
+gm::Pose transformPose (const tf::Transform& trans, const gm::Pose& pose)
+{
+  tf::Transform p;
+  tf::poseMsgToTF(pose, p);
+  gm::Pose ret;
+  tf::poseTFToMsg(trans*p, ret);
+  return ret;
+}
+
+
+
+void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
+{
+  gm::Pose current = getPose();
+  ROS_INFO("Not well localized");
+  if (previously_matched_)
+  {
+    ROS_INFO("Previously matched, so not doing anything");
+    return;
+  } 
+  ROS_INFO("Here's where I'd try to match this scan");
+  InterestPointVec pts = extractFeatures(scan, current);
+      
+  BOOST_FOREACH (const RefScan& ref_scan, ref_scans_) 
+  {
+    ROS_INFO ("Matching scan");
+    Correspondences matches;
+    OrientedPoint2D trans;
+    ransac_->matchSets(ref_scan.raw_pts, pts, trans, matches);
+    const int num_matches = matches.size();
+    if (num_matches > 0) // TODO
     {
-      ROS_INFO("Here's where I'd try to match this scan");
+      ROS_INFO_NAMED ("match", "Found %d matches with ref scan at "
+                       "%.2f, %.2f, %.2f", num_matches,
+                       ref_scan.pose.position.x, ref_scan.pose.position.y,
+                       tf::getYaw(ref_scan.pose.orientation));
+      //match_poses.poses.push_back(ref_scan.pose);
+      const gm::Pose laser_pose = transformPose(ref_scan.pose, trans);
+      const gm::Pose adjusted_pose = transformPose(tf::Transform(), laser_pose); // todo laser_offset
+      int best_num_matches = -1; // todo
+      if (num_matches > best_num_matches)
+      {
+        best_num_matches = num_matches;
+        ROS_INFO_NAMED ("match", "Transform is %.2f, %.2f, %.2f."
+                         "  Transformed pose is %.2f, %.2f, %.2f",
+                         trans.x, trans.y, trans.theta,
+                         adjusted_pose.position.x, adjusted_pose.position.y,
+                         tf::getYaw(adjusted_pose.orientation));
+        // best_pose.pose = adjusted_pose; \TODO
+      }
     }
+  }
 }
 
 void Node::updateLocalized (sm::LaserScan::ConstPtr scan)
@@ -214,9 +272,12 @@ void Node::updateLocalized (sm::LaserScan::ConstPtr scan)
     
     vector<DBScan> scans = scans_.pullAllResults(q, true);
     ROS_INFO ("Found %zu nearby scans", scans.size());
-    if (scans.size()<1)
+    if (scans.size()<1) //todo
     {
-      scans_.insert(extractFeatures(scan, current),
+      InterestPointVec pts = extractFeatures(scan, current);
+      RefScan ref_scan(scan, current, pts);
+      ref_scans_.push_back(ref_scan);
+      scans_.insert(toRos(ref_scan),
                     mr::Metadata("x", x, "y", y, "theta", th));
       ROS_DEBUG_NAMED ("save_scan", "Saved scan at %.2f, %.2f, %.2f", x, y, th);
     }
@@ -256,7 +317,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   if (dist < 0.1)
     updateLocalized(scan);
   else
-    updateUnlocalized();
+    updateUnlocalized(scan);
 }
 
 } // namespace
