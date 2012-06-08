@@ -83,7 +83,9 @@ Node::Node () :
 void Node::mapCB (const nm::OccupancyGrid& g)
 {
   Lock l(mutex_);
+  ROS_INFO("Received map; setting scan evaluator");
   evaluator_.reset(new ScanPoseEvaluator(g));
+  ROS_INFO("Scan evaluator initialized");
 }
 
 inline
@@ -113,16 +115,16 @@ void Node::scanCB (const sm::LaserScan& scan)
   }
   
   // Have we initialized the evaluator yet?
-  {
     Lock l(mutex_);
     if (!evaluator_)
+    {
       ROS_INFO_STREAM ("Skipping scan as evaluator not yet initialized");
-    return;
-  }
+      return;
+    }
     
   // Evaluate how well this scan is localized
   const double dist = (*evaluator_)(scan, toMsg(trans));
-  ROS_INFO ("Median distance is %.4f", dist);
+  ROS_INFO_THROTTLE (1.0, "Median distance is %.4f", dist);
                            
 }
 

@@ -47,7 +47,7 @@ namespace gu=occupancy_grid_utils;
 namespace nm=nav_msgs;
 
 ScanPoseEvaluator::ScanPoseEvaluator (const nm::OccupancyGrid& g) :
-  geom_(g.info), distances_(gu::distanceField(g))
+  geom_(g.info), distances_(gu::distanceField(g, 0.4))
 {
   ROS_INFO ("Scan pose evaluator initialized");
 }
