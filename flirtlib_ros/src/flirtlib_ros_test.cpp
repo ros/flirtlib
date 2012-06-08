@@ -66,7 +66,7 @@ namespace flirtlib_ros
  * Utilities
  ***********************************************************/
 
-gm::Point toPoint (const btVector3 p)
+gm::Point toPoint (const tf::Vector3& p)
 {
   gm::Point pt;
   pt.x = p.x();
@@ -213,8 +213,8 @@ vm::Marker correspondenceMarkers (const Correspondences& correspondences,
 
   BOOST_FOREACH (const Correspondence& c, correspondences) 
   {
-    const btVector3 pt0(c.first->getPosition().x, c.first->getPosition().y, 0.0);
-    const btVector3 pt1(c.second->getPosition().x, c.second->getPosition().y, 0.0);
+    const tf::Vector3 pt0(c.first->getPosition().x, c.first->getPosition().y, 0.0);
+    const tf::Vector3 pt1(c.second->getPosition().x, c.second->getPosition().y, 0.0);
     m.points.push_back(toPoint(pose0*pt0));
     m.points.push_back(toPoint(pose1*pt1));
   }

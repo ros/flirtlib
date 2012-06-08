@@ -119,7 +119,7 @@ vector<vm::Marker> poseMarkers (const vector<gm::Pose>& poses)
   return markers;
 }
 
-gm::Point toPoint (const btVector3 p)
+gm::Point toPoint (const tf::Vector3& p)
 {
   gm::Point pt;
   pt.x = p.x();
@@ -171,8 +171,8 @@ vm::Marker interestPointMarkers (const InterestPointVec& pts, const gm::Pose& po
     for (unsigned i=0; i<4; i++)
     {
       const unsigned j = (i==0) ? 3 : i-1;
-      const btVector3 pt0(x0+dx[i], y0+dy[i], 0);
-      const btVector3 pt1(x0+dx[j], y0+dy[j], 0);
+      const tf::Point pt0(x0+dx[i], y0+dy[i], 0);
+      const tf::Point pt1(x0+dx[j], y0+dy[j], 0);
       m.points.push_back(toPoint(trans*pt0));
       m.points.push_back(toPoint(trans*pt1));
     }

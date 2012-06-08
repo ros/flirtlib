@@ -51,6 +51,8 @@ namespace sm=sensor_msgs;
 namespace gm=geometry_msgs;
 namespace mr=mongo_ros;
 namespace vm=visualization_msgs;
+using std::vector;
+using std::string;
 
 typedef boost::mutex::scoped_lock Lock;
 typedef vector<InterestPoint*> InterestPointVec;
@@ -156,7 +158,7 @@ inline
 double angleDist (double t1, double t2)
 {
   if (t2<t1)
-    swap(t1,t2);
+    std::swap(t1,t2);
   const double d = t2-t1;
   return std::min(d, 6.2832-d);
 }

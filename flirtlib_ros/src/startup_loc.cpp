@@ -89,7 +89,7 @@ private:
 
   // Parameters
   const double min_num_matches_;
-  const btTransform laser_offset_;
+  const tf::Transform laser_offset_;
 
   // State
   RefScans ref_scans_;
@@ -169,12 +169,12 @@ DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
   return gen;
 }
 
-btTransform loadLaserOffset ()
+tf::Transform loadLaserOffset ()
 {
   const double yaw = getPrivateParam<double>("laser_offset_yaw", 0.0);
   const double x = getPrivateParam<double>("laser_offset_x", 0.0);
   const double y = getPrivateParam<double>("laser_offset_y", 0.0);
-  return btTransform(tf::createQuaternionFromYaw(yaw), btVector3(x, y, 0));
+  return tf::Transform(tf::createQuaternionFromYaw(yaw), tf::Vector3(x, y, 0));
 }
 
 Node::Node () :
@@ -246,19 +246,19 @@ gm::Pose Node::getPose ()
 
 gm::Pose transformPose (const gm::Pose& p, const OrientedPoint2D& trans)
 {
-  btTransform laser_pose(btQuaternion(0, 0, 0, 1), btVector3(-0.275, 0, 0));
-  btTransform tr;
+  tf::Transform laser_pose(tf::Quaternion(0, 0, 0, 1), tf::Vector3(-0.275, 0, 0));
+  tf::Transform tr;
   tf::poseMsgToTF(p, tr);
-  btTransform rel(tf::createQuaternionFromYaw(trans.theta),
-                  btVector3(trans.x, trans.y, 0.0));
+  tf::Transform rel(tf::createQuaternionFromYaw(trans.theta),
+                    tf::Vector3(trans.x, trans.y, 0.0));
   gm::Pose ret;
   tf::poseTFToMsg(tr*rel*laser_pose, ret);
   return ret;
 }
 
-gm::Pose transformPose (const btTransform& trans, const gm::Pose& pose)
+gm::Pose transformPose (const tf::Transform& trans, const gm::Pose& pose)
 {
-  btTransform p;
+  tf::Transform p;
   tf::poseMsgToTF(pose, p);
   gm::Pose ret;
   tf::poseTFToMsg(trans*p, ret);

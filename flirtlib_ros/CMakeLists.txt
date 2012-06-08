@@ -16,8 +16,10 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 rosbuild_genmsg()
 
 rosbuild_add_library(flirtlib_ros
-                     src/conversions.cpp)
+                     src/conversions.cpp
+                     src/localization_monitor.cpp)
 target_link_libraries(flirtlib_ros tinyxml)                   
+target_link_libraries(flirtlib_ros grid_utils)
 
 rosbuild_add_executable(flirtlib_ros_test src/flirtlib_ros_test.cpp)
 target_link_libraries(flirtlib_ros_test feature sensorstream sensors utils)
@@ -31,15 +33,16 @@ target_link_libraries(simulate_scans grid_utils)
 target_link_libraries(simulate_scans tinyxml)
 
 rosbuild_add_executable(place_rec_test src/place_rec_test.cpp)
-target_link_libraries(place_rec_test grid_utils)
 target_link_libraries(place_rec_test flirtlib_ros)
 
 rosbuild_add_executable(generate_scan_map src/generate_scan_map.cpp)
 target_link_libraries(generate_scan_map flirtlib_ros)
 
 rosbuild_add_executable(startup_loc src/startup_loc.cpp)
-target_link_libraries(startup_loc grid_utils)
 target_link_libraries(startup_loc flirtlib_ros)
+
+rosbuild_add_executable(localization_monitor src/localization_monitor_node.cpp)
+target_link_libraries(localization_monitor flirtlib_ros)
 
 #rosbuild_add_executable(rotate_in_place src/rotate_in_place.cpp)
 #target_link_libraries(rotate_in_place tinyxml)
