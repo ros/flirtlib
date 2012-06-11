@@ -38,9 +38,11 @@
 
 #include <flirtlib_ros/localization_monitor.h>
 #include <flirtlib_ros/conversions.h>
+#include <flirtlib_ros/common.h>
 #include <boost/thread.hpp>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
+#include <geometry_msgs/PoseArray.h>
 #include <mongo_ros/message_collection.h>
 #include <visualization_msgs/Marker.h>
 
@@ -98,12 +100,14 @@ private:
   shared_ptr<ScanPoseEvaluator> evaluator_;
   bool previously_matched_;
   vector<RefScan> ref_scans_; // local copy of db scans
+  tf::Transform laser_offset_;
 
   mr::MessageCollection<RefScanRos> scans_;
   tf::TransformListener tf_;
   ros::Subscriber scan_sub_;
   ros::Subscriber map_sub_;
   ros::Publisher marker_pub_;
+  ros::Publisher ref_scan_pose_pub_;
 };
 
 
@@ -143,9 +147,24 @@ Node::Node () :
   scans_("flirtlib_place_rec", "scans", "mongo.willowgarage.com"),
   scan_sub_(nh_.subscribe("base_scan", 10, &Node::scanCB, this)),
   map_sub_(nh_.subscribe("map", 10, &Node::mapCB, this)),
-  marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10))
+  marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
+  ref_scan_pose_pub_(nh_.advertise<gm::PoseArray>("ref_scan_poses", 10, true))
 {
-  ROS_INFO("Localization monitor initialized");
+  ROS_DEBUG_NAMED("init", "Waiting for laser offset");
+  laser_offset_ = getLaserOffset(tf_);
+
+  gm::PoseArray poses;
+  BOOST_FOREACH (const mr::MessageWithMetadata<RefScanRos>::ConstPtr m,
+                 scans_.queryResults(mr::Query(), false)) 
+  {
+    ref_scans_.push_back(fromRos(*m));
+    poses.poses.push_back(makePose(m->lookupDouble("x"), m->lookupDouble("y"),
+                                   m->lookupDouble("theta")));
+  }
+  poses.header.stamp = ros::Time::now();
+  poses.header.frame_id = "/map";
+  ref_scan_pose_pub_.publish(poses);
+  ROS_INFO("Localization monitor initialized with %zu scans", ref_scans_.size());
 }
 
 
@@ -155,23 +174,6 @@ void Node::mapCB (const nm::OccupancyGrid& g)
   ROS_INFO("Received map; setting scan evaluator");
   evaluator_.reset(new ScanPoseEvaluator(g));
   ROS_INFO("Scan evaluator initialized");
-}
-
-inline
-gm::Pose toMsg (const tf::Transform& trans)
-{
-  gm::Pose m;
-  tf::poseTFToMsg(trans, m);
-  return m;
-}
-
-gm::Pose Node::getPose ()
-{
-  tf::StampedTransform trans;
-  tf_.lookupTransform("/map", "base_laser_link", ros::Time(), trans);
-  gm::Pose pose;
-  tf::poseTFToMsg(trans, pose);
-  return pose;
 }
 
 InterestPointVec Node::extractFeatures (sm::LaserScan::ConstPtr scan,
@@ -188,32 +190,9 @@ InterestPointVec Node::extractFeatures (sm::LaserScan::ConstPtr scan,
 
 
 
-gm::Pose transformPose (const gm::Pose& p, const OrientedPoint2D& trans)
-{
-  tf::Transform laser_pose(tf::Quaternion(0, 0, 0, 1), tf::Vector3(-0.275, 0, 0));
-  tf::Transform tr;
-  tf::poseMsgToTF(p, tr);
-  tf::Transform rel(tf::createQuaternionFromYaw(trans.theta),
-                    tf::Vector3(trans.x, trans.y, 0.0));
-  gm::Pose ret;
-  tf::poseTFToMsg(tr*rel*laser_pose, ret);
-  return ret;
-}
-
-gm::Pose transformPose (const tf::Transform& trans, const gm::Pose& pose)
-{
-  tf::Transform p;
-  tf::poseMsgToTF(pose, p);
-  gm::Pose ret;
-  tf::poseTFToMsg(trans*p, ret);
-  return ret;
-}
-
-
-
 void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
 {
-  gm::Pose current = getPose();
+  gm::Pose current = getCurrentPose(tf_);
   ROS_INFO("Not well localized");
   if (previously_matched_)
   {
@@ -238,16 +217,16 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
                        tf::getYaw(ref_scan.pose.orientation));
       //match_poses.poses.push_back(ref_scan.pose);
       const gm::Pose laser_pose = transformPose(ref_scan.pose, trans);
-      const gm::Pose adjusted_pose = transformPose(tf::Transform(), laser_pose); // todo laser_offset
+      const tf::Pose adjusted_pose = poseMsgToTf(laser_pose)*laser_offset_;
       int best_num_matches = -1; // todo
       if (num_matches > best_num_matches)
       {
         best_num_matches = num_matches;
+        const tf::Vector3& pos = adjusted_pose.getOrigin();
         ROS_INFO_NAMED ("match", "Transform is %.2f, %.2f, %.2f."
-                         "  Transformed pose is %.2f, %.2f, %.2f",
-                         trans.x, trans.y, trans.theta,
-                         adjusted_pose.position.x, adjusted_pose.position.y,
-                         tf::getYaw(adjusted_pose.orientation));
+                        "  Transformed pose is %.2f, %.2f, %.2f",
+                        trans.x, trans.y, trans.theta, pos.x(), pos.y(),
+                        tf::getYaw(adjusted_pose.getRotation()));
         // best_pose.pose = adjusted_pose; \TODO
       }
     }
@@ -260,7 +239,7 @@ void Node::updateLocalized (sm::LaserScan::ConstPtr scan)
     const double DPOS = 0.5;
     const double DTHETA = 0.5;
   
-    gm::Pose current = getPose();
+    gm::Pose current = getCurrentPose(tf_);
     const double x = current.position.x;
     const double y = current.position.y;
     const double th = tf::getYaw(current.orientation);
@@ -311,7 +290,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   }
     
   // Evaluate how well this scan is localized
-  const double dist = (*evaluator_)(*scan, toMsg(trans));
+  const double dist = (*evaluator_)(*scan, tfTransformToPose(trans));
   //ROS_INFO_THROTTLE (1.0, "Median distance is %.4f", dist);
   
   if (dist < 0.1)

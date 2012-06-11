@@ -17,6 +17,7 @@ rosbuild_genmsg()
 
 rosbuild_add_library(flirtlib_ros
                      src/conversions.cpp
+                     src/common.cpp
                      src/localization_monitor.cpp)
 target_link_libraries(flirtlib_ros tinyxml)                   
 target_link_libraries(flirtlib_ros grid_utils)
