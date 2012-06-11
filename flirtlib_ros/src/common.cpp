@@ -41,10 +41,11 @@
 namespace flirtlib_ros
 {
 
-gm::Pose getCurrentPose (const tf::TransformListener& tf)
+gm::Pose getCurrentPose (const tf::TransformListener& tf,
+                         const std::string& frame)
 {
   tf::StampedTransform trans;
-  tf.lookupTransform("/map", "base_laser_link", ros::Time(), trans);
+  tf.lookupTransform("/map", frame, ros::Time(), trans);
   gm::Pose pose;
   tf::poseTFToMsg(trans, pose);
   return pose;

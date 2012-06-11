@@ -66,9 +66,27 @@ tf::Pose poseMsgToTf (const gm::Pose& p)
                   tf::Vector3(v.x, v.y, v.z));
 }
 
+
+/// Load a private parameter
+/// Requires ros::init to have been called.  Also, make sure
+/// an external node handle is in scope before calling this.
+template <typename T>
+T getPrivateParam (const std::string& name, const T& default_val)
+{
+  ros::NodeHandle nh("~");
+  T val;
+  nh.param(name, val, default_val);
+  ROS_DEBUG_STREAM_NAMED ("init", "Initialized " << name << " to " << val <<
+                          "(default was " << default_val << ")");
+  return val;
+}
+  
+
+
 /// Get the current pose of the laser link in the map frame
 /// \throws Tf exceptions
-gm::Pose getCurrentPose (const tf::TransformListener& tf);
+gm::Pose getCurrentPose (const tf::TransformListener& tf,
+                         const std::string& frame);
 
 /// Transform a flirtlib 2d pose
 gm::Pose transformPose (const gm::Pose& p, const OrientedPoint2D& trans);
