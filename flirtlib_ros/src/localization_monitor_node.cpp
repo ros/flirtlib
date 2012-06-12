@@ -41,17 +41,19 @@
  * 
  * Provides
  * - At most once per execution, will publish a pose on initialpose,
- * if it decides the robot is poorly localized and it finds a good match among
- * the saved scans.
+ *   if it decides the robot is poorly localized and it finds a good match among
+ *   the saved scans.
  * - Visualization of interest point, reference scan locations
  * - Saves new scans to the db; tries to cover x-y-theta space with scans.
  *
  * Parameters:
  * - min_num_matches: #feature matches required for a succesful scan match.
  * - min_successful_navs: Number of succesful navigations that must be observed
- * before we start saving scans.  Defaults to 1.
+ *   before we start saving scans.  Defaults to 1.
  * - db_name: Name of database.  Defaults to flirtlib_place_rec.
  * - db_host: Hostname where db is running.  Defaults to localhost.
+ * - quality_threshold: Bound on quality parameter to consider robot 
+ *   well-localized.  Defaults to 0.25.
  *
  * \author Bhaskara Marthi
  */
@@ -146,6 +148,9 @@ private:
   // Rate at which we'll consider new scans
   ros::Rate update_rate_;
   
+  // Bound on quality to consider the robot well localized
+  double quality_threshold_;
+  
   /************************************************************
    * Flirtlib objects
    ************************************************************/
@@ -226,7 +231,7 @@ Node::Node () :
   min_successful_navs_(getPrivateParam<int>("min_successful_navs", 1)),
   db_name_(getPrivateParam<string>("db_name", "flirtlib_place_rec")),
   db_host_(getPrivateParam<string>("db_host", "localhost")),
-  update_rate_(1.0),
+  update_rate_(1.0), quality_threshold_(0.25),
   peak_finder_(new SimpleMinMaxPeakFinder(0.34, 0.001)),
   histogram_dist_(new SymmetricChi2Distance<double>()),
   detector_(createDetector(peak_finder_.get())),
@@ -354,7 +359,7 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
   // We'll always publish a visualization, but we'll only publish on the
   // initialpose topic once (so after that, this node will go into a state where
   // all it does is possibly save new scans).
-  if (quality < 0.2 || best_num_matches > 3*min_num_matches_)
+  if (quality < quality_threshold_ || best_num_matches > 3*min_num_matches_)
   {
     ROS_INFO("Found a good match");
     
@@ -385,28 +390,53 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
 
 // Search the db for a nearby scan.  If none is found, and also we've
 // successfully navigated previously (as a further cue that we're well
-// localized), then add this scan to the db.
+// localized), then add this scan to the db, and remove any
+// nearby old scans.
 void Node::updateLocalized (sm::LaserScan::ConstPtr scan,
                             const gm::Pose& current)
 {
   ROS_INFO("Well localized");
   const double DPOS = 1;
   const double DTHETA = 1;
+  const double DT = 86400; // one day
   
   // Query the db for nearby scans
+  const double t = ros::Time::now().toSec();
   const double x = current.position.x;
+  const double x0 = x - DPOS;
+  const double x1 = x + DPOS;
   const double y = current.position.y;
+  const double y0 = y - DPOS;
+  const double y1 = y + DPOS;
   const double th = tf::getYaw(current.orientation);
+  const double th0 = th - DTHETA;
+  const double th1 = th + DTHETA;
+  const double min_time = t-DT;
   format f("{x : {$gt: %.4f, $lt: %.4f}, y : {$gt: %.4f, $lt: %.4f}, "
-           "theta: {$gt: %.4f, $lt: %.4f} }");
-  string str = (f % (x-DPOS) % (x+DPOS) % (y-DPOS) % (y+DPOS) %
-                (th-DTHETA) % (th+DTHETA)).str();
+           "theta: {$gt: %.4f, $lt: %.4f}, creation_time: {$gt: %.8f} }");
+  string str = (f % x0 % x1 % y0 % y1 % th0 % th1 % min_time).str();
   mongo::Query q = mongo::fromjson(str);
   vector<DBScan> scans = scans_.pullAllResults(q, true);
   
   // Possibly save this new scan
   if (scans.size()<1 && successful_navs_>=min_successful_navs_) 
   {
+    // First remove old scans that are nearby
+    format old("{x : {$gt: %.4f, $lt: %.4f}, y : {$gt: %.4f, $lt: %.4f}, "
+               "theta: {$gt: %.4f, $lt: %.4f} }");
+    const string old_query_str = (old % x0 % x1 % y0 % y1 % th0 % th1).str();
+    const mongo::Query old_query = mongo::fromjson(old_query_str);
+    const vector<DBScan> old_scans = scans_.pullAllResults(old_query, true);
+    scans_.removeMessages(old_query);
+    BOOST_FOREACH (const DBScan& old_scan, old_scans) 
+    {
+      ROS_INFO ("Removed old scan at (%.4f, %.4f, %.f) taken at %.4f",
+                old_scan->lookupDouble("x"), old_scan->lookupDouble("y"),
+                old_scan->lookupDouble("theta"),
+                old_scan->lookupDouble("creation_time"));
+    }
+
+    // Now add this new scan
     InterestPointVec pts = extractFeatures(scan);
     sm::LaserScan::Ptr stripped_scan(new sm::LaserScan(*scan));
     stripped_scan->ranges.clear();
@@ -416,6 +446,7 @@ void Node::updateLocalized (sm::LaserScan::ConstPtr scan,
     scans_.insert(toRos(ref_scan),
                   mr::Metadata("x", x, "y", y, "theta", th));
     ROS_DEBUG_NAMED ("save_scan", "Saved scan at %.2f, %.2f, %.2f", x, y, th);
+    
     publishRefScans();
   }
 }
@@ -453,7 +484,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   const double dist = (*evaluator_)(*scan, pose);
   ROS_INFO_THROTTLE (1.0, "Localization quality is %.2f", dist);
   
-  if (dist < 0.25)
+  if (dist < quality_threshold_)
     updateLocalized(scan, pose);
   else
     updateUnlocalized(scan);
