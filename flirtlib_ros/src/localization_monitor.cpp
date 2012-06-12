@@ -47,11 +47,49 @@ namespace gu=occupancy_grid_utils;
 namespace nm=nav_msgs;
 
 ScanPoseEvaluator::ScanPoseEvaluator (const nm::OccupancyGrid& g) :
-  geom_(g.info), distances_(gu::distanceField(g, 0.7))
+  geom_(g.info), distances_(gu::distanceField(g, 0.5))
 {
   ROS_INFO ("Scan pose evaluator initialized");
 }
 
+gm::Pose ScanPoseEvaluator::adjustPose (const sm::LaserScan& scan,
+                                        const gm::Pose& initial_pose,
+                                        const double pos_range,
+                                        const double dpos,
+                                        const double dtheta) const
+{
+  const double x0=initial_pose.position.x;
+  const double y0=initial_pose.position.y;
+  const double theta0 = tf::getYaw(initial_pose.orientation);
+  
+  double best = 1e9;
+  gm::Pose best_pose;
+
+  for (double x=x0-pos_range; x<x0+pos_range; x+=dpos)
+  {
+    for (double y=y0-pos_range; y<y0+pos_range; y+=dpos)
+    {
+      for (double th=theta0-3.14; th<theta0+3.14; th+=dtheta)
+      {
+        gm::Pose p;
+        p.position.x = x;
+        p.position.y = y;
+        p.orientation = tf::createQuaternionMsgFromYaw(th);
+        double quality = (*this)(scan, p);
+        if (quality < best)
+        {
+          ROS_DEBUG_NAMED ("adjust_pose", "Quality of %.2f, %.2f, %.2f is %.2f",
+                           x, y, th, quality);
+          best = quality;
+          best_pose = p;
+        }
+      }
+    }
+  }
+  
+  ROS_ASSERT(best<1e8);
+  return best_pose;
+}
 
 float ScanPoseEvaluator::operator() (const sm::LaserScan& scan,
                                      const gm::Pose& pose) const

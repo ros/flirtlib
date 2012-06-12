@@ -1,0 +1,20 @@
+<launch>
+  
+  <arg name="run_db" default="false"/>
+  <arg name="db_path" default="/tmp"/>
+
+  <arg name="db_host" value="mongo.willowgarage.com" unless="$(arg run_db)"/>
+  <arg name="db_host" value="localhost" if="$(arg run_db)"/>
+
+  <node pkg="flirtlib_ros" type="localization_monitor"
+        name="flirtlib_place_rec" output="screen">
+    <param name="min_successful_navs" value="1"/>
+    <param name="min_num_matches" value="10"/>
+    <param name="db_name" value="flirtlib_place_rec"/>
+    <param name="db_host" value="$(arg db_host)"/>
+  </node>
+  
+  <node pkg="mongodb" type="wrapper.py" name="flirtlib_db" if="$(arg run_db)"
+        output="screen"/>
+
+</launch>

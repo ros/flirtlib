@@ -56,6 +56,12 @@ public:
   float operator() (const sensor_msgs::LaserScan& scan,
                     const geometry_msgs::Pose& pose) const;
   
+  // Locally adjust pose to improve quality
+  geometry_msgs::Pose adjustPose (const sensor_msgs::LaserScan& scan,
+                                  const geometry_msgs::Pose& init_pose,
+                                  double pos_range, double dpos,
+                                  double dtheta) const;
+  
 private:
 
   nav_msgs::MapMetaData geom_;
