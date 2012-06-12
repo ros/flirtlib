@@ -1,9 +1,29 @@
+<!--
+Brings up the flirtlib place recognition node
+
+Arguments:
+- run_db: whether to run a Mongo server on localhost or use an existing
+  one.  Default is false.
+- db_path: db path.  Used if run_db is true.  Default is /removable/flirtlib_db
+- remote_db_host: hostname of remote db.  Used if run_db is false.  Default
+  is mongo.willowgarage.com
+
+Requires:
+- Nav stack to be running
+- Laser scans on base_scan topic
+
+Provides:
+- Attempts to localize the robot on startup if mislocalization detected
+- Saves new scans to the db once at least one successful navigation happens
+-->
+
 <launch>
   
   <arg name="run_db" default="false"/>
-  <arg name="db_path" default="/tmp"/>
+  <arg name="db_path" default="/removable/flirtlib_db"/>
+  <arg name="remote_db_host" default="mongo.willowgarage.com"/>
 
-  <arg name="db_host" value="mongo.willowgarage.com" unless="$(arg run_db)"/>
+  <arg name="db_host" value="$(arg remote_db_host)" unless="$(arg run_db)"/>
   <arg name="db_host" value="localhost" if="$(arg run_db)"/>
 
   <node pkg="flirtlib_ros" type="localization_monitor"
