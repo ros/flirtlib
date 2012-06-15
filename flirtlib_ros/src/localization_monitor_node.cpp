@@ -64,6 +64,7 @@
 #include <boost/thread.hpp>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
+#include <tf/exceptions.h>
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <mongo_ros/message_collection.h>
@@ -368,19 +369,21 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
   {
     ROS_INFO("Found a good match");
     
-    /*const gm::Pose adjusted_pose = evaluator_->adjustPose(*scan, best_pose,
-                                                          .3, .05, .5);
-    ROS_INFO_STREAM ("Adjusted " << best_pose << " to " << adjusted_pose);
-    */
-    // This is for visualization only
     const ros::Time now = ros::Time::now();
-    tf::Pose adjusted_pose(compensateOdometry(poseMsgToTf(best_pose),
-                                              scan->header.frame_id,
-                                              scan->header.stamp, now));
+    gm::PoseStamped estimated_pose;
+    try {
+      tf::Pose adjusted_pose(compensateOdometry(poseMsgToTf(best_pose),
+                                                scan->header.frame_id,
+                                                scan->header.stamp, now));
+      tf::poseTFToMsg(adjusted_pose*laser_offset_, estimated_pose.pose);
+    }
+    catch (tf::TransformException& e)
+    {
+      ROS_INFO ("Discarding match due to tf exception: %s", e.what());
+      return;
+    }
     
 
-    gm::PoseStamped estimated_pose;
-    tf::poseTFToMsg(adjusted_pose*laser_offset_, estimated_pose.pose);
     estimated_pose.header.frame_id = "/map";
     estimated_pose.header.stamp = now;
     pose_est_pub_.publish(estimated_pose);
@@ -406,8 +409,8 @@ tf::Transform Node::compensateOdometry (const tf::Pose& pose,
                                         const ros::Time& t2)
 {
   const string FIXED_FRAME = "odom_combined";
-  tf_.waitForTransform(FIXED_FRAME, frame, t1, ros::Duration(0.05));
-  tf_.waitForTransform(FIXED_FRAME, frame, t2, ros::Duration(0.05));
+  tf_.waitForTransform(FIXED_FRAME, frame, t1, ros::Duration(0.1));
+  tf_.waitForTransform(FIXED_FRAME, frame, t2, ros::Duration(0.1));
 
   tf::StampedTransform current_odom, prev_odom;
   tf_.lookupTransform(FIXED_FRAME, frame, t2, current_odom);
