@@ -359,7 +359,7 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
   // We'll always publish a visualization, but we'll only publish on the
   // initialpose topic once (so after that, this node will go into a state where
   // all it does is possibly save new scans).
-  if (quality < quality_threshold_ || best_num_matches > 3*min_num_matches_)
+  if (quality < quality_threshold_)
   {
     ROS_INFO("Found a good match");
     
