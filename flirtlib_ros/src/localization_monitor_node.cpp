@@ -122,6 +122,11 @@ private:
   // Republish the set of reference scan poses.
   void publishRefScans () const;
   
+  // Compensate for base movement between when the scan was taken and now
+  tf::Transform compensateOdometry (const tf::Pose& sensor_pose,
+                                    const string& frame, const ros::Time& t1,
+                                    const ros::Time& t2);
+  
   /************************************************************
    * Needed during init
    ************************************************************/
@@ -368,10 +373,16 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
     ROS_INFO_STREAM ("Adjusted " << best_pose << " to " << adjusted_pose);
     */
     // This is for visualization only
+    const ros::Time now = ros::Time::now();
+    tf::Pose adjusted_pose(compensateOdometry(poseMsgToTf(best_pose),
+                                              scan->header.frame_id,
+                                              scan->header.stamp, now));
+    
+
     gm::PoseStamped estimated_pose;
-    tf::poseTFToMsg(poseMsgToTf(best_pose)*laser_offset_, estimated_pose.pose);
+    tf::poseTFToMsg(adjusted_pose*laser_offset_, estimated_pose.pose);
     estimated_pose.header.frame_id = "/map";
-    estimated_pose.header.stamp = ros::Time::now();
+    estimated_pose.header.stamp = now;
     pose_est_pub_.publish(estimated_pose);
     
     // Only publish initialpose once
@@ -386,6 +397,25 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
     }
   }
 }
+
+/// Compensate for base movement between scan time and current time using 
+/// odometry
+tf::Transform Node::compensateOdometry (const tf::Pose& pose,
+                                        const string& frame,
+                                        const ros::Time& t1,
+                                        const ros::Time& t2)
+{
+  const string FIXED_FRAME = "odom_combined";
+  tf_.waitForTransform(FIXED_FRAME, frame, t1, ros::Duration(0.05));
+  tf_.waitForTransform(FIXED_FRAME, frame, t2, ros::Duration(0.05));
+
+  tf::StampedTransform current_odom, prev_odom;
+  tf_.lookupTransform(FIXED_FRAME, frame, t2, current_odom);
+  tf_.lookupTransform(FIXED_FRAME, frame, t1, prev_odom);
+  tf::Transform current_to_prev = prev_odom.inverse()*current_odom;
+  return pose*current_to_prev;
+}
+                                        
 
 // Search the db for a nearby scan.  If none is found, and also we've
 // successfully navigated previously (as a further cue that we're well
