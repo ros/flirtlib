@@ -296,7 +296,7 @@ void Node::mapCB (const nm::OccupancyGrid& g)
 {
   Lock l(mutex_);
   ROS_INFO("Received map; setting scan evaluator");
-  evaluator_.reset(new ScanPoseEvaluator(g));
+  evaluator_.reset(new ScanPoseEvaluator(g, quality_threshold_*1.05));
   ROS_INFO("Scan evaluator initialized");
 }
 
@@ -388,16 +388,12 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
     estimated_pose.header.stamp = now;
     pose_est_pub_.publish(estimated_pose);
     
-    // Only publish initialpose once
-    if (match_counter_==0)
-    {
       match_counter_++;
       gm::PoseWithCovarianceStamped initial_pose;
       initial_pose.header.frame_id = "/map";
       initial_pose.header.stamp = scan->header.stamp;
       initial_pose.pose.pose = estimated_pose.pose;
       initial_pose_pub_.publish(initial_pose);
-    }
   }
 }
 
@@ -518,7 +514,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   
   if (dist < quality_threshold_)
     updateLocalized(scan, pose);
-  else
+  else if (match_counter_==0)
     updateUnlocalized(scan);
   
   // Make this callback happen at a bounded rate

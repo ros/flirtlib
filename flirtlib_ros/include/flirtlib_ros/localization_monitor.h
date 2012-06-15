@@ -50,7 +50,8 @@ class ScanPoseEvaluator
 {
 public:
 
-  ScanPoseEvaluator (const nav_msgs::OccupancyGrid& g);
+  ScanPoseEvaluator (const nav_msgs::OccupancyGrid& g,
+                     double threshold);
   
   // Return median distance (m) from each scan point to nearest obstacle
   float operator() (const sensor_msgs::LaserScan& scan,
