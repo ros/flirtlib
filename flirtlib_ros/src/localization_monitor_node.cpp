@@ -367,7 +367,6 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
                                                           .3, .05, .5);
     ROS_INFO_STREAM ("Adjusted " << best_pose << " to " << adjusted_pose);
     */
-    
     // This is for visualization only
     gm::PoseStamped estimated_pose;
     tf::poseTFToMsg(poseMsgToTf(best_pose)*laser_offset_, estimated_pose.pose);
@@ -381,7 +380,7 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
       match_counter_++;
       gm::PoseWithCovarianceStamped initial_pose;
       initial_pose.header.frame_id = "/map";
-      initial_pose.header.stamp = ros::Time::now();
+      initial_pose.header.stamp = scan->header.stamp;
       initial_pose.pose.pose = estimated_pose.pose;
       initial_pose_pub_.publish(initial_pose);
     }
@@ -396,7 +395,7 @@ void Node::updateLocalized (sm::LaserScan::ConstPtr scan,
                             const gm::Pose& current)
 {
   ROS_INFO("Well localized");
-  const double DPOS = 1;
+  const double DPOS = 0.7;
   const double DTHETA = 1;
   const double DT = 86400; // one day
   
