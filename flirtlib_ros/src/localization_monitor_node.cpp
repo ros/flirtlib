@@ -45,6 +45,8 @@
  *   the saved scans.
  * - Visualization of interest point, reference scan locations
  * - Saves new scans to the db; tries to cover x-y-theta space with scans.
+ * - Executive state published at 1hz on startup_loc_state
+ * - ~reset_state service to reset to the state upon startup
  *
  * Parameters:
  * - min_num_matches: #feature matches required for a succesful scan match.
@@ -52,7 +54,7 @@
  *   before we start saving scans.  Defaults to 1.
  * - db_name: Name of database.  Defaults to flirtlib_place_rec.
  * - db_host: Hostname where db is running.  Defaults to localhost.
- * - quality_threshold: Bound on quality parameter to consider robot 
+ * - badness_threshold: Bound on badness parameter to consider robot 
  *   well-localized.  Defaults to 0.25.
  *
  * \author Bhaskara Marthi
@@ -61,6 +63,7 @@
 #include <flirtlib_ros/localization_monitor.h>
 #include <flirtlib_ros/conversions.h>
 #include <flirtlib_ros/common.h>
+#include <flirtlib_ros/ExecutiveState.h>
 #include <boost/thread.hpp>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
@@ -70,6 +73,8 @@
 #include <mongo_ros/message_collection.h>
 #include <visualization_msgs/Marker.h>
 #include <move_base_msgs/MoveBaseActionResult.h>
+#include <std_srvs/Empty.h>
+
 
 namespace flirtlib_ros
 {
@@ -108,6 +113,13 @@ public:
   // Used to count successful navigations, as an indicator that we're
   // well localized.
   void navCB (const mbm::MoveBaseActionResult& m);
+  
+  // Publish the executive state periodically
+  void publishExecState (const ros::TimerEvent& e);
+  
+  // Reset the executive state
+  bool resetExecState (std_srvs::Empty::Request& req,
+                       std_srvs::Empty::Response& resp);
   
 private:
   
@@ -154,8 +166,8 @@ private:
   // Rate at which we'll consider new scans
   ros::Rate update_rate_;
   
-  // Bound on quality to consider the robot well localized
-  double quality_threshold_;
+  // Bound on badness to consider the robot well localized
+  double badness_threshold_;
   
   /************************************************************
    * Flirtlib objects
@@ -183,11 +195,14 @@ private:
   // How many successful navigations have we observed
   unsigned successful_navs_;
   
+  // The last measurement of localization badness
+  double localization_badness_;
+  
   /************************************************************
    * Associated objects
    ************************************************************/
 
-  // Evaluates localization quality based on the scan and the static map
+  // Evaluates localization badness based on the scan and the static map
   shared_ptr<ScanPoseEvaluator> evaluator_;
   
   // Db collection of scans
@@ -200,10 +215,23 @@ private:
   ros::Publisher ref_scan_pose_pub_;
   ros::Publisher pose_est_pub_;
   ros::Publisher match_pose_pub_;
+  ros::Publisher exec_state_pub_;
   ros::Publisher initial_pose_pub_;
   ros::Subscriber nav_result_sub_;
+  ros::ServiceServer reset_srv_;
+  ros::Timer state_pub_timer_;
 };
 
+// Reset to the executive state upon startup
+bool Node::resetExecState (std_srvs::Empty::Request& req,
+                           std_srvs::Empty::Response& resp)
+{
+  Lock l(mutex_);
+  match_counter_ = 0;
+  successful_navs_ = 0;
+  localization_badness_ = -1;
+  return true;
+}
 
 Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
 {
@@ -237,7 +265,7 @@ Node::Node () :
   min_successful_navs_(getPrivateParam<int>("min_successful_navs", 1)),
   db_name_(getPrivateParam<string>("db_name", "flirtlib_place_rec")),
   db_host_(getPrivateParam<string>("db_host", "localhost")),
-  update_rate_(1.0), quality_threshold_(0.25),
+  update_rate_(1.0), badness_threshold_(0.25),
   peak_finder_(new SimpleMinMaxPeakFinder(0.34, 0.001)),
   histogram_dist_(new SymmetricChi2Distance<double>()),
   detector_(createDetector(peak_finder_.get())),
@@ -245,15 +273,20 @@ Node::Node () :
   ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
                                       0.0384, false)),
   match_counter_(0), successful_navs_(0),
-  scans_(db_name_, "scans", db_host_),
+  localization_badness_(-1), scans_(db_name_, "scans", db_host_),
   scan_sub_(nh_.subscribe("base_scan", 10, &Node::scanCB, this)),
   map_sub_(nh_.subscribe("map", 10, &Node::mapCB, this)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   ref_scan_pose_pub_(nh_.advertise<gm::PoseArray>("ref_scan_poses", 10, true)),
   pose_est_pub_(nh_.advertise<gm::PoseStamped>("pose_estimate", 1)),
   match_pose_pub_(nh_.advertise<gm::PoseArray>("match_poses", 1)),
-  initial_pose_pub_(nh_.advertise<gm::PoseWithCovarianceStamped>("initialpose", 1)),
-  nav_result_sub_(nh_.subscribe("move_base/result", 10, &Node::navCB, this))
+  exec_state_pub_(nh_.advertise<ExecutiveState>("startup_loc_state", 1)),
+  initial_pose_pub_(nh_.advertise<gm::PoseWithCovarianceStamped>("initialpose",
+                                                                 1)),
+  nav_result_sub_(nh_.subscribe("move_base/result", 10, &Node::navCB, this)),
+  reset_srv_(nh_.advertiseService("~reset_state", &Node::resetExecState, this)),
+  state_pub_timer_(nh_.createTimer(ros::Duration(1.0),
+                                   &Node::publishExecState, this))
 {
   ROS_DEBUG_NAMED("init", "Waiting for laser offset");
   laser_offset_ = getLaserOffset(tf_);
@@ -264,6 +297,17 @@ Node::Node () :
     ref_scans_.push_back(fromRos(*m));
   publishRefScans();
   ROS_INFO("Localization monitor initialized with %zu scans", ref_scans_.size());
+}
+
+// Publish the executive state
+void Node::publishExecState (const ros::TimerEvent& e)
+{
+  Lock l(mutex_);
+  ExecutiveState s;
+  s.publishing_localization = (match_counter_==0);
+  s.successful_navs = successful_navs_;
+  s.localization_badness = localization_badness_;
+  exec_state_pub_.publish(s);
 }
 
 // Update counter of successful navs observed
@@ -296,7 +340,7 @@ void Node::mapCB (const nm::OccupancyGrid& g)
 {
   Lock l(mutex_);
   ROS_INFO("Received map; setting scan evaluator");
-  evaluator_.reset(new ScanPoseEvaluator(g, quality_threshold_*1.05));
+  evaluator_.reset(new ScanPoseEvaluator(g, badness_threshold_*1.05));
   ROS_INFO("Scan evaluator initialized");
 }
 
@@ -358,14 +402,14 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
     return;
 
   match_pose_pub_.publish(match_poses);
-  const double quality = (*evaluator_)(*scan, best_pose);
-  ROS_INFO ("Quality is %.2f", quality);
+  const double badness = (*evaluator_)(*scan, best_pose);
+  ROS_INFO ("Badness is %.2f", badness);
   
-  // Do a further check of scan quality before committing to this
+  // Do a further check of scan badness before committing to this
   // We'll always publish a visualization, but we'll only publish on the
   // initialpose topic once (so after that, this node will go into a state where
   // all it does is possibly save new scans).
-  if (quality < quality_threshold_)
+  if (badness < badness_threshold_)
   {
     ROS_INFO("Found a good match");
     
@@ -510,9 +554,9 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   // Evaluate how well this scan is localized
   const gm::Pose pose = tfTransformToPose(trans);
   const double dist = (*evaluator_)(*scan, pose);
-  ROS_INFO_THROTTLE (1.0, "Localization quality is %.2f", dist);
+  ROS_INFO_THROTTLE (1.0, "Localization badness is %.2f", dist);
   
-  if (dist < quality_threshold_)
+  if (dist < badness_threshold_)
     updateLocalized(scan, pose);
   else if (match_counter_==0)
     updateUnlocalized(scan);

@@ -76,12 +76,12 @@ gm::Pose ScanPoseEvaluator::adjustPose (const sm::LaserScan& scan,
         p.position.x = x;
         p.position.y = y;
         p.orientation = tf::createQuaternionMsgFromYaw(th);
-        double quality = (*this)(scan, p);
-        if (quality < best)
+        double badness = (*this)(scan, p);
+        if (badness < best)
         {
-          ROS_DEBUG_NAMED ("adjust_pose", "Quality of %.2f, %.2f, %.2f is %.2f",
-                           x, y, th, quality);
-          best = quality;
+          ROS_DEBUG_NAMED ("adjust_pose", "Badness of %.2f, %.2f, %.2f is %.2f",
+                           x, y, th, badness);
+          best = badness;
           best_pose = p;
         }
       }
