@@ -1,6 +1,15 @@
+<!--
+
+Brings up a version of move_base that runs in the odom_combined frame, and 
+doesn't use a map.  It runs in the move_base_local namespace so it can run
+at the same time as the standard nav stack, and in fact assumes that the
+sensor processing, etc., has been brought up by wg_pr2_2dnav/pr2_2dnav.launch
+or equivalent.
+
+-->
+
 <launch>
   <include file="$(find pr2_machine)/$(env ROBOT).machine" />
-  <include file="$(find flirtlib_ros)/move_base_local.xml"/>
   <node ns="move_base_local" pkg="move_base" type="move_base" name="move_base_node" machine="c2">
     <remap from="odom" to="/base_odometry/odom" />
     <remap from="cmd_vel" to="/navigation/cmd_vel" />
