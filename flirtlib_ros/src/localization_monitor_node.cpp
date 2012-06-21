@@ -218,6 +218,7 @@ private:
   ros::Publisher exec_state_pub_;
   ros::Publisher initial_pose_pub_;
   ros::Subscriber nav_result_sub_;
+  ros::NodeHandle pnh_;
   ros::ServiceServer reset_srv_;
   ros::Timer state_pub_timer_;
 };
@@ -284,7 +285,8 @@ Node::Node () :
   initial_pose_pub_(nh_.advertise<gm::PoseWithCovarianceStamped>("initialpose",
                                                                  1)),
   nav_result_sub_(nh_.subscribe("move_base/result", 10, &Node::navCB, this)),
-  reset_srv_(nh_.advertiseService("~reset_state", &Node::resetExecState, this)),
+  pnh_("~"),
+  reset_srv_(pnh_.advertiseService("reset_state", &Node::resetExecState, this)),
   state_pub_timer_(nh_.createTimer(ros::Duration(1.0),
                                    &Node::publishExecState, this))
 {
@@ -340,7 +342,7 @@ void Node::mapCB (const nm::OccupancyGrid& g)
 {
   Lock l(mutex_);
   ROS_INFO("Received map; setting scan evaluator");
-  evaluator_.reset(new ScanPoseEvaluator(g, badness_threshold_*1.05));
+  evaluator_.reset(new ScanPoseEvaluator(g, badness_threshold_*1.5));
   ROS_INFO("Scan evaluator initialized");
 }
 
@@ -554,6 +556,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   // Evaluate how well this scan is localized
   const gm::Pose pose = tfTransformToPose(trans);
   const double dist = (*evaluator_)(*scan, pose);
+  localization_badness_ = dist;
   ROS_INFO_THROTTLE (1.0, "Localization badness is %.2f", dist);
   
   if (dist < badness_threshold_)
@@ -571,6 +574,6 @@ int main (int argc, char** argv)
 {
   ros::init(argc, argv, "localization_monitor_node");
   flirtlib_ros::Node node;
-  ros::spin();
+  ros::MultiThreadedSpinner(3).spin();
   return 0;
 }
