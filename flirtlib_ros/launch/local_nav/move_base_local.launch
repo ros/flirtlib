@@ -10,6 +10,8 @@ or equivalent.
 
 <launch>
   <include file="$(find pr2_machine)/$(env ROBOT).machine" />
+  <node pkg="flirtlib_ros" name="startup_loc_wander" type="wander"
+        required="true" output="screen"/>
   <node ns="move_base_local" pkg="move_base" type="move_base" name="move_base_node" machine="c2">
     <remap from="odom" to="/base_odometry/odom" />
     <remap from="cmd_vel" to="/navigation/cmd_vel" />
