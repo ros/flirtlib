@@ -235,7 +235,8 @@ Node::Node () :
   min_successful_navs_(getPrivateParam<int>("min_successful_navs", 1)),
   db_name_(getPrivateParam<string>("db_name", "flirtlib_place_rec")),
   db_host_(getPrivateParam<string>("db_host", "localhost")),
-  update_rate_(1.0), badness_threshold_(0.25), match_counter_(0),
+  update_rate_(getPrivateParam<double>("update_rate", 1.0)),
+  badness_threshold_(0.25), match_counter_(0),
   successful_navs_(0), localization_badness_(-1),
   features_(ros::NodeHandle("~")), scans_(db_name_, "scans", db_host_),
   scan_sub_(nh_.subscribe("base_scan", 10, &Node::scanCB, this)),
@@ -541,6 +542,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   }
   
   // Have we initialized the evaluator yet?
+  {
   Lock l(mutex_);
   if (!evaluator_)
   {
@@ -552,13 +554,14 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   const gm::Pose pose = tfTransformToPose(trans);
   const double dist = (*evaluator_)(*scan, pose);
   localization_badness_ = dist;
-  ROS_INFO_THROTTLE (1.0, "Localization badness is %.2f", dist);
+  ROS_INFO ("Localization badness is %.2f", dist);
   
   if (dist < badness_threshold_)
     updateLocalized(scan, pose);
   else if (match_counter_==0)
     updateUnlocalized(scan);
   
+  }
   // Make this callback happen at a bounded rate
   update_rate_.sleep();
 }
@@ -569,6 +572,6 @@ int main (int argc, char** argv)
 {
   ros::init(argc, argv, "localization_monitor_node");
   flirtlib_ros::Node node;
-  ros::MultiThreadedSpinner(3).spin();
+  ros::spin();
   return 0;
 }
