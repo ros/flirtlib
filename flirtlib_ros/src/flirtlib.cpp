@@ -31,50 +31,52 @@
 /**
  * \file 
  * 
- * Collects together all includes for flirtlib, and a struct to wrap
- * the various objects
+ * Implementation of flirtlib.h
  *
  * \author Bhaskara Marthi
  */
 
-#ifndef FLIRTLIB_ROS_FLIRTLIB_H
-#define FLIRTLIB_ROS_FLIRTLIB_H
-
-#define BOOST_NO_HASH
-
-#include <feature/Detector.h>
-#include <feature/ShapeContext.h>
-#include <feature/BetaGrid.h>
-#include <feature/RangeDetector.h>
-#include <feature/CurvatureDetector.h>
-#include <feature/NormalBlobDetector.h>
-#include <feature/NormalEdgeDetector.h>
-#include <feature/RansacFeatureSetMatcher.h>
-#include <feature/RansacMultiFeatureSetMatcher.h>
-#include <sensorstream/CarmenLog.h>
-#include <sensorstream/LogSensorStream.h>
-#include <sensorstream/SensorStream.h>
-#include <utils/SimpleMinMaxPeakFinder.h>
-#include <utils/HistogramDistances.h>
-#include <ros/ros.h>
+#include <flirtlib_ros/flirtlib.h>
 
 namespace flirtlib_ros
 {
 
-struct FlirtlibFeatures
+using std::string;
+
+Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
 {
-  /// Initialize Flirtlib objects based on ros parameters.  Specifying the
-  /// node handle argument allows selecting the ros namespace in which the
-  /// parameters will be searched for.
-  FlirtlibFeatures (ros::NodeHandle nh = ros::NodeHandle("~"));
-  
-  boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
-  boost::shared_ptr<HistogramDistance<double> > histogram_dist_;
-  boost::shared_ptr<Detector> detector_;
-  boost::shared_ptr<DescriptorGenerator> descriptor_;
-  boost::shared_ptr<RansacFeatureSetMatcher> ransac_;
-};
+  const double scale = 5.0;
+  const double dmst = 2.0;
+  const double base_sigma = 0.2;
+  const double sigma_step = 1.4;
+  CurvatureDetector* det = new CurvatureDetector(peak_finder, scale, base_sigma,
+                                                 sigma_step, dmst);
+  det->setUseMaxRange(false);
+  return det;
+}
+
+DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
+{
+  const double min_rho = 0.02;
+  const double max_rho = 0.5;
+  const double bin_rho = 4;
+  const double bin_phi = 12;
+  BetaGridGenerator* gen = new BetaGridGenerator(min_rho, max_rho, bin_rho,
+                                                 bin_phi);
+  gen->setDistanceFunction(dist);
+  return gen;
+}
+
+
+FlirtlibFeatures::FlirtlibFeatures (ros::NodeHandle nh)
+{
+  ROS_INFO("Note: currently ignoring ros params and using hardcoded params");
+  peak_finder_.reset(new SimpleMinMaxPeakFinder(0.34, 0.001));
+  histogram_dist_.reset(new SymmetricChi2Distance<double>());
+  detector_.reset(createDetector(peak_finder_.get()));
+  descriptor_.reset(createDescriptor(histogram_dist_.get()));
+  ransac_.reset(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
+                                            0.0384, false));
+}
 
 } // namespace
-
-#endif // include guard

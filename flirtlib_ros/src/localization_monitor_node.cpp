@@ -170,16 +170,6 @@ private:
   double badness_threshold_;
   
   /************************************************************
-   * Flirtlib objects
-   ************************************************************/
-  
-  shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
-  shared_ptr<HistogramDistance<double> > histogram_dist_;
-  shared_ptr<Detector> detector_;
-  shared_ptr<DescriptorGenerator> descriptor_;
-  shared_ptr<RansacFeatureSetMatcher> ransac_;
-
-  /************************************************************
    * Mutable state
    ************************************************************/
   
@@ -201,6 +191,9 @@ private:
   /************************************************************
    * Associated objects
    ************************************************************/
+  
+  // Flirtlib detector and descriptor
+  FlirtlibFeatures features_;
 
   // Evaluates localization badness based on the scan and the static map
   shared_ptr<ScanPoseEvaluator> evaluator_;
@@ -234,30 +227,6 @@ bool Node::resetExecState (std_srvs::Empty::Request& req,
   return true;
 }
 
-Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
-{
-  const double scale = 5.0;
-  const double dmst = 2.0;
-  const double base_sigma = 0.2;
-  const double sigma_step = 1.4;
-  CurvatureDetector* det = new CurvatureDetector(peak_finder, scale, base_sigma,
-                                                 sigma_step, dmst);
-  det->setUseMaxRange(false);
-  return det;
-}
-
-DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
-{
-  const double min_rho = 0.02;
-  const double max_rho = 0.5;
-  const double bin_rho = 4;
-  const double bin_phi = 12;
-  BetaGridGenerator* gen = new BetaGridGenerator(min_rho, max_rho, bin_rho,
-                                                 bin_phi);
-  gen->setDistanceFunction(dist);
-  return gen;
-}
-
 
 // Constructor sets up ros comms and flirtlib objects, loads scans from db,
 // and figures out the offset between the base and the laser frames
@@ -266,15 +235,9 @@ Node::Node () :
   min_successful_navs_(getPrivateParam<int>("min_successful_navs", 1)),
   db_name_(getPrivateParam<string>("db_name", "flirtlib_place_rec")),
   db_host_(getPrivateParam<string>("db_host", "localhost")),
-  update_rate_(1.0), badness_threshold_(0.25),
-  peak_finder_(new SimpleMinMaxPeakFinder(0.34, 0.001)),
-  histogram_dist_(new SymmetricChi2Distance<double>()),
-  detector_(createDetector(peak_finder_.get())),
-  descriptor_(createDescriptor(histogram_dist_.get())),
-  ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
-                                      0.0384, false)),
-  match_counter_(0), successful_navs_(0),
-  localization_badness_(-1), scans_(db_name_, "scans", db_host_),
+  update_rate_(1.0), badness_threshold_(0.25), match_counter_(0),
+  successful_navs_(0), localization_badness_(-1),
+  features_(ros::NodeHandle("~")), scans_(db_name_, "scans", db_host_),
   scan_sub_(nh_.subscribe("base_scan", 10, &Node::scanCB, this)),
   map_sub_(nh_.subscribe("map", 10, &Node::mapCB, this)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
@@ -351,9 +314,9 @@ InterestPointVec Node::extractFeatures (sm::LaserScan::ConstPtr scan) const
 {
   shared_ptr<LaserReading> reading = fromRos(*scan);
   InterestPointVec pts;
-  detector_->detect(*reading, pts);
+  features_.detector_->detect(*reading, pts);
   BOOST_FOREACH (InterestPoint* p, pts) 
-    p->setDescriptor(descriptor_->describe(*p, *reading));
+    p->setDescriptor(features_.descriptor_->describe(*p, *reading));
   return pts;
 }
 
@@ -381,7 +344,7 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
   {
     Correspondences matches;
     OrientedPoint2D trans;
-    ransac_->matchSets(ref_scan.raw_pts, pts, trans, matches);
+    features_.ransac_->matchSets(ref_scan.raw_pts, pts, trans, matches);
     const unsigned num_matches = matches.size();
     if (num_matches > min_num_matches_) 
     {
