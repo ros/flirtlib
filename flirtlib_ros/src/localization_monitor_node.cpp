@@ -310,25 +310,17 @@ unsigned getSum (const nm::OccupancyGrid& g)
   return sum;
 }
 
-MapWithMetadata::ConstPtr Node::getSavedGrid() const
-{
-  mr::MessageCollection<nm::OccupancyGrid> coll(db_name_, "grid");
-  if (coll.count()==0)
-    return MapWithMetadata::ConstPtr();
-  else
-    // We only care about the metadata right now
-    return coll.pullAllResults(mr::Query(), true)[0];
-}
 
 // Use the map to initialize the localization evaluator
 void Node::mapCB (const nm::OccupancyGrid& g)
 {
   const unsigned my_sum = getSum(g);
-  MapWithMetadata::ConstPtr saved_map = getSavedGrid();
-  Lock l(mutex_);
+  mr::MessageCollection<nm::OccupancyGrid> coll(db_name_, "grid", db_host_);
   ROS_INFO("Received map");
-  if (saved_map)
+  if (coll.count()>0)
   {
+    MapWithMetadata::ConstPtr saved_map =
+      coll.pullAllResults(mr::Query(), true)[0];
     const double res = saved_map->lookupDouble("resolution");
     const unsigned height = saved_map->lookupInt("height");
     const unsigned width = saved_map->lookupInt("width");
@@ -348,7 +340,13 @@ void Node::mapCB (const nm::OccupancyGrid& g)
     ROS_WARN("Didn't find an OccupancyGrid in the database.  Assuming this is "
              "a new db and saving current map with size %ux%u and sum %u",
              g.info.height, g.info.width, my_sum);
+    mr::Metadata m = mr::Metadata().\
+      append("height", g.info.height).append("width", g.info.width).\
+      append("resolution", g.info.resolution).append("sum", my_sum);
+    coll.insert(g, m);
   }
+  ROS_INFO("Initializing scan evaluator distance field");
+  Lock l(mutex_);
   evaluator_.reset(new ScanPoseEvaluator(g, badness_threshold_*1.5));
   ROS_INFO("Scan evaluator initialized");
 }
