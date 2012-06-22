@@ -93,7 +93,6 @@ using boost::shared_ptr;
 
 typedef boost::mutex::scoped_lock Lock;
 typedef mr::MessageWithMetadata<RefScanRos>::ConstPtr DBScan;
-typedef vector<InterestPoint*> InterestPointVec;
 typedef std::pair<InterestPoint*, InterestPoint*> Correspondence;
 typedef vector<Correspondence> Correspondences;
 typedef vector<RefScan> RefScans;
@@ -123,9 +122,6 @@ public:
   
 private:
   
-  // Extract FLIRT features from a scan
-  InterestPointVec extractFeatures (sm::LaserScan::ConstPtr scan) const;
-
   // Update given that we're well localized
   void updateLocalized (sm::LaserScan::ConstPtr scan, const gm::Pose& p);
   
@@ -309,17 +305,6 @@ void Node::mapCB (const nm::OccupancyGrid& g)
   ROS_INFO("Scan evaluator initialized");
 }
 
-// Extract flirtlib features
-InterestPointVec Node::extractFeatures (sm::LaserScan::ConstPtr scan) const
-{
-  shared_ptr<LaserReading> reading = fromRos(*scan);
-  InterestPointVec pts;
-  features_.detector_->detect(*reading, pts);
-  BOOST_FOREACH (InterestPoint* p, pts) 
-    p->setDescriptor(features_.descriptor_->describe(*p, *reading));
-  return pts;
-}
-
 
 
 // If we're not well localized, try to localize by matching against the scans in the db
@@ -328,7 +313,7 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
   // Extract features from curent scan
   gm::Pose current = getCurrentPose(tf_, "base_footprint");
   ROS_INFO("Not well localized");
-  InterestPointVec pts = extractFeatures(scan);
+  InterestPointVec pts = features_.extractFeatures(scan);
   marker_pub_.publish(interestPointMarkers(pts, current));
       
   // Set up 
@@ -474,7 +459,7 @@ void Node::updateLocalized (sm::LaserScan::ConstPtr scan,
     }
 
     // Now add this new scan
-    InterestPointVec pts = extractFeatures(scan);
+    InterestPointVec pts = features_.extractFeatures(scan);
     sm::LaserScan::Ptr stripped_scan(new sm::LaserScan(*scan));
     stripped_scan->ranges.clear();
     stripped_scan->intensities.clear();

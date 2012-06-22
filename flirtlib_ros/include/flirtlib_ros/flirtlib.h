@@ -56,10 +56,13 @@
 #include <sensorstream/SensorStream.h>
 #include <utils/SimpleMinMaxPeakFinder.h>
 #include <utils/HistogramDistances.h>
+#include <sensor_msgs/LaserScan.h>
 #include <ros/ros.h>
 
 namespace flirtlib_ros
 {
+
+typedef std::vector<InterestPoint*> InterestPointVec;
 
 struct FlirtlibFeatures
 {
@@ -73,6 +76,8 @@ struct FlirtlibFeatures
   boost::shared_ptr<Detector> detector_;
   boost::shared_ptr<DescriptorGenerator> descriptor_;
   boost::shared_ptr<RansacFeatureSetMatcher> ransac_;
+  
+  InterestPointVec extractFeatures (sensor_msgs::LaserScan::ConstPtr scan) const;
 };
 
 } // namespace

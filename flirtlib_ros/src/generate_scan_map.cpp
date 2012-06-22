@@ -79,11 +79,7 @@ private:
   const double pos_inc_, theta_inc_;
 
   // Flirtlib objects
-  boost::shared_ptr<SimpleMinMaxPeakFinder> peak_finder_;
-  boost::shared_ptr<HistogramDistance<double> > histogram_dist_;
-  boost::shared_ptr<Detector> detector_;
-  boost::shared_ptr<DescriptorGenerator> descriptor_;
-  boost::shared_ptr<RansacFeatureSetMatcher> ransac_;
+  FlirtlibFeatures features_;
   
   // Ros objects
   tf::TransformListener tf_;
@@ -108,39 +104,10 @@ T getPrivateParam (const string& name)
   return val;
 }
 
-Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
-{
-  const double scale = 5.0;
-  const double dmst = 2.0;
-  const double base_sigma = 0.2;
-  const double sigma_step = 1.4;
-  CurvatureDetector* det = new CurvatureDetector(peak_finder, scale, base_sigma,
-                                                 sigma_step, dmst);
-  det->setUseMaxRange(false);
-  return det;
-}
-
-DescriptorGenerator* createDescriptor (HistogramDistance<double>* dist)
-{
-  const double min_rho = 0.02;
-  const double max_rho = 0.5;
-  const double bin_rho = 4;
-  const double bin_phi = 12;
-  BetaGridGenerator* gen = new BetaGridGenerator(min_rho, max_rho, bin_rho,
-                                                 bin_phi);
-  gen->setDistanceFunction(dist);
-  return gen;
-}
-
 Node::Node () :
   pos_inc_(getPrivateParam<double>("pos_inc")), 
   theta_inc_(getPrivateParam<double>("theta_inc")),
-  peak_finder_(new SimpleMinMaxPeakFinder(0.34, 0.001)),
-  histogram_dist_(new SymmetricChi2Distance<double>()),
-  detector_(createDetector(peak_finder_.get())),
-  descriptor_(createDescriptor(histogram_dist_.get())),
-  ransac_(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
-                                      0.0384, false)),
+  features_(ros::NodeHandle("~")),
   scan_sub_(nh_.subscribe("scan", 1, &Node::scanCB, this)),
   marker_pub_(nh_.advertise<vm::Marker>("visualization_marker", 10)),
   scans_(getPrivateParam<string>("scan_db"), "scans")
@@ -205,9 +172,9 @@ RefScanRos Node::extractFeatures (sm::LaserScan::ConstPtr scan,
 {
   boost::shared_ptr<LaserReading> reading = fromRos(*scan);
   InterestPointVec pts;
-  detector_->detect(*reading, pts);
+  features_.detector_->detect(*reading, pts);
   BOOST_FOREACH (InterestPoint* p, pts) 
-    p->setDescriptor(descriptor_->describe(*p, *reading));
+    p->setDescriptor(features_.descriptor_->describe(*p, *reading));
   marker_pub_.publish(interestPointMarkers(pts, pose));
   const RefScan ref(scan, pose, pts);
   return toRos(ref);

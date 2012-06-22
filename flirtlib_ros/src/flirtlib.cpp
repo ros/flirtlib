@@ -37,11 +37,14 @@
  */
 
 #include <flirtlib_ros/flirtlib.h>
+#include <flirtlib_ros/conversions.h>
+#include <boost/foreach.hpp>
 
 namespace flirtlib_ros
 {
 
 using std::string;
+namespace sm=sensor_msgs;
 
 Detector* createDetector (SimpleMinMaxPeakFinder* peak_finder)
 {
@@ -78,5 +81,19 @@ FlirtlibFeatures::FlirtlibFeatures (ros::NodeHandle nh)
   ransac_.reset(new RansacFeatureSetMatcher(0.0599, 0.95, 0.4, 0.4,
                                             0.0384, false));
 }
+
+// Extract flirtlib features
+InterestPointVec
+FlirtlibFeatures::extractFeatures (sm::LaserScan::ConstPtr scan) const
+{
+  boost::shared_ptr<LaserReading> reading = fromRos(*scan);
+  InterestPointVec pts;
+  detector_->detect(*reading, pts);
+  BOOST_FOREACH (InterestPoint* p, pts) 
+    p->setDescriptor(descriptor_->describe(*p, *reading));
+  return pts;
+}
+
+
 
 } // namespace
