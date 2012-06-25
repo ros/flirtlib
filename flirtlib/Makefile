@@ -1,10 +1,10 @@
 all: flirtlib
 
-SVN_REVISION = -r 6 --non-interactive --trust-server-cert
+SVN_REVISION = -r 6
 SVN_URL = https://svn.openslam.org/data/svn/flirtlib
 SVN_DIR = build/FLIRTLib
 SVN_PATCH = flirtlib.patch
-SVN_CMDLINE = svn --non-interactive --trust-server-cert
+SVN_CMDLINE = echo t | svn
 
 include $(shell rospack find mk)/svn_checkout.mk
 
