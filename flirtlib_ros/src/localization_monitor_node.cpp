@@ -36,13 +36,16 @@
  * do startup localization, and update itself over time as the map changes.
  * 
  * Requires:
- * - The nav stack (amcl, move_base) to be running
+ * - The nav stack (amcl, move_base, map_server) to be running
  * - Incoming laser scans on base_scan topic
+ * - A running mongodb instance on the given host.  
+ * - Either the given database must be empty, or it must have previously
+ *   been used with the same occupancy grid that is currently being published
+ *   by the nav stack.
  * 
  * Provides
- * - At most once per execution, will publish a pose on initialpose,
- *   if it decides the robot is poorly localized and it finds a good match among
- *   the saved scans.
+ * - Will publish a pose on initialpose, if it decides the robot is poorly
+ *   localized and it finds a good match among the saved scans.
  * - Visualization of interest point, reference scan locations
  * - Saves new scans to the db; tries to cover x-y-theta space with scans.
  * - Executive state published at 1hz on startup_loc_state
@@ -209,11 +212,11 @@ private:
   ros::Publisher pose_est_pub_;
   ros::Publisher match_pose_pub_;
   ros::Publisher exec_state_pub_;
-  ros::Publisher initial_pose_pub_;
-  ros::Subscriber nav_result_sub_;
+  ros::Publisher pose_pub_;
+  ros::Subscriber nav_sub_;
   ros::NodeHandle pnh_;
   ros::ServiceServer reset_srv_;
-  ros::Timer state_pub_timer_;
+  ros::Timer pub_timer_;
 };
 
 // Reset to the executive state upon startup
@@ -246,13 +249,10 @@ Node::Node () :
   pose_est_pub_(nh_.advertise<gm::PoseStamped>("pose_estimate", 1)),
   match_pose_pub_(nh_.advertise<gm::PoseArray>("match_poses", 1)),
   exec_state_pub_(nh_.advertise<ExecutiveState>("startup_loc_state", 1)),
-  initial_pose_pub_(nh_.advertise<gm::PoseWithCovarianceStamped>("initialpose",
-                                                                 1)),
-  nav_result_sub_(nh_.subscribe("move_base/result", 10, &Node::navCB, this)),
-  pnh_("~"),
+  pose_pub_(nh_.advertise<gm::PoseWithCovarianceStamped>("initialpose", 1)),
+  nav_sub_(nh_.subscribe("move_base/result", 1, &Node::navCB, this)), pnh_("~"),
   reset_srv_(pnh_.advertiseService("reset_state", &Node::resetExecState, this)),
-  state_pub_timer_(nh_.createTimer(ros::Duration(1.0),
-                                   &Node::publishExecState, this))
+  pub_timer_(nh_.createTimer(ros::Duration(1.0), &Node::publishExecState, this))
 {
   ROS_DEBUG_NAMED("init", "Waiting for laser offset");
   laser_offset_ = getLaserOffset(tf_);
@@ -433,7 +433,7 @@ void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
       initial_pose.header.frame_id = "/map";
       initial_pose.header.stamp = scan->header.stamp;
       initial_pose.pose.pose = estimated_pose.pose;
-      initial_pose_pub_.publish(initial_pose);
+      pose_pub_.publish(initial_pose);
   }
 }
 
