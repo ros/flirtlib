@@ -48,6 +48,7 @@ target_link_libraries(localization_monitor flirtlib_ros)
 
 rosbuild_add_executable(generate_simulated_scans src/generate_simulated_scans.cpp)
 target_link_libraries(generate_simulated_scans flirtlib_ros)
+rosbuild_link_boost(generate_simulated_scans program_options)
 
 #rosbuild_add_executable(rotate_in_place src/rotate_in_place.cpp)
 #target_link_libraries(rotate_in_place tinyxml)

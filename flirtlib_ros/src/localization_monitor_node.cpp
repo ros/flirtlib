@@ -59,6 +59,9 @@
  * - db_host: Hostname where db is running.  Defaults to localhost.
  * - badness_threshold: Bound on badness parameter to consider robot 
  *   well-localized.  Defaults to 0.25.
+ * - continual_publish_: whether to continually publish pose estimates or only
+ *   do so once.  Defaults to false.
+ * - odom_frame_: Name of the odometric frame.  Defaults to odom_combined. 
  *
  * \author Bhaskara Marthi
  */
@@ -172,6 +175,13 @@ private:
   // Bound on badness to consider the robot well localized
   double badness_threshold_;
   
+  // Odometric frame
+  string odom_frame_;
+  
+  // Whether we continually publish localizations on initialpose 
+  // (if false, we'll just publish one until reset)
+  bool continual_publish_;
+  
   /************************************************************
    * Mutable state
    ************************************************************/
@@ -182,8 +192,8 @@ private:
   // Offset between laser and base frames
   tf::Transform laser_offset_;
   
-  // How many times have we published a succesful match on initialpose so far
-  unsigned match_counter_;
+  // Will we publish a localization next time we find a good match
+  bool publishing_loc_;
   
   // How many successful navigations have we observed
   unsigned successful_navs_;
@@ -224,7 +234,7 @@ bool Node::resetExecState (std_srvs::Empty::Request& req,
                            std_srvs::Empty::Response& resp)
 {
   Lock l(mutex_);
-  match_counter_ = 0;
+  publishing_loc_ = true;
   successful_navs_ = 0;
   localization_badness_ = -1;
   return true;
@@ -239,7 +249,10 @@ Node::Node () :
   db_name_(getPrivateParam<string>("db_name", "flirtlib_place_rec")),
   db_host_(getPrivateParam<string>("db_host", "localhost")),
   update_rate_(getPrivateParam<double>("update_rate", 1.0)),
-  badness_threshold_(0.25), match_counter_(0),
+  badness_threshold_(0.25),
+  odom_frame_(getPrivateParam<string>("odom_frame", "odom_combined")),
+  continual_publish_(getPrivateParam<bool>("continual_publish", false)),
+  publishing_loc_(true),
   successful_navs_(0), localization_badness_(-1),
   features_(ros::NodeHandle("~")), scans_(db_name_, "scans", db_host_),
   scan_sub_(nh_.subscribe("base_scan", 10, &Node::scanCB, this)),
@@ -270,7 +283,7 @@ void Node::publishExecState (const ros::TimerEvent& e)
 {
   Lock l(mutex_);
   ExecutiveState s;
-  s.publishing_localization = (match_counter_==0);
+  s.publishing_localization = publishing_loc_;
   s.successful_navs = successful_navs_;
   s.localization_badness = localization_badness_;
   exec_state_pub_.publish(s);
@@ -354,88 +367,89 @@ void Node::mapCB (const nm::OccupancyGrid& g)
 
 
 // If we're not well localized, try to localize by matching against the scans in the db
-void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
-{
-  // Extract features from curent scan
-  gm::Pose current = getCurrentPose(tf_, "base_footprint");
-  ROS_INFO("Not well localized");
-  InterestPointVec pts = features_.extractFeatures(scan);
-  marker_pub_.publish(interestPointMarkers(pts, current));
-      
-  // Set up 
-  gm::PoseArray match_poses;
-  match_poses.header.frame_id = "/map";
-  match_poses.header.stamp = ros::Time::now();
-  unsigned best_num_matches = 0;
-  gm::Pose best_pose;
-  
-  // Iterate over reference scans and match against each one, looking for the
-  // one with the largest number of feature matches
-  BOOST_FOREACH (const RefScan& ref_scan, ref_scans_) 
+  void Node::updateUnlocalized (sm::LaserScan::ConstPtr scan)
   {
-    Correspondences matches;
-    OrientedPoint2D trans;
-    features_.ransac_->matchSets(ref_scan.raw_pts, pts, trans, matches);
-    const unsigned num_matches = matches.size();
-    if (num_matches > min_num_matches_) 
+    // Extract features from curent scan
+    gm::Pose current = getCurrentPose(tf_, "base_footprint");
+    ROS_INFO("Not well localized");
+    InterestPointVec pts = features_.extractFeatures(scan);
+    marker_pub_.publish(interestPointMarkers(pts, current));
+      
+    // Set up 
+    gm::PoseArray match_poses;
+    match_poses.header.frame_id = "/map";
+    match_poses.header.stamp = ros::Time::now();
+    unsigned best_num_matches = 0;
+    gm::Pose best_pose;
+  
+    // Iterate over reference scans and match against each one, looking for the
+    // one with the largest number of feature matches
+    BOOST_FOREACH (const RefScan& ref_scan, ref_scans_) 
     {
-      ROS_INFO_NAMED ("match", "Found %d matches with ref scan at "
-                      "%.2f, %.2f, %.2f", num_matches,
-                      ref_scan.pose.position.x, ref_scan.pose.position.y,
-                      tf::getYaw(ref_scan.pose.orientation));
-      match_poses.poses.push_back(ref_scan.pose);
-      const gm::Pose laser_pose = transformPose(ref_scan.pose, trans);
-      if (num_matches > best_num_matches)
+      Correspondences matches;
+      OrientedPoint2D trans;
+      features_.ransac_->matchSets(ref_scan.raw_pts, pts, trans, matches);
+      const unsigned num_matches = matches.size();
+      if (num_matches > min_num_matches_) 
       {
-        best_num_matches = num_matches;
-        best_pose = laser_pose;
+        ROS_INFO_NAMED ("match", "Found %d matches with ref scan at "
+                        "%.2f, %.2f, %.2f", num_matches,
+                        ref_scan.pose.position.x, ref_scan.pose.position.y,
+                        tf::getYaw(ref_scan.pose.orientation));
+        match_poses.poses.push_back(ref_scan.pose);
+        const gm::Pose laser_pose = transformPose(ref_scan.pose, trans);
+        if (num_matches > best_num_matches)
+        {
+          best_num_matches = num_matches;
+          best_pose = laser_pose;
+        }
       }
     }
-  }
 
-  // Only proceed if there are a sufficient number of feature matches
-  if (best_num_matches<min_num_matches_)
-    return;
-
-  match_pose_pub_.publish(match_poses);
-  const double badness = (*evaluator_)(*scan, best_pose);
-  ROS_INFO ("Badness is %.2f", badness);
-  
-  // Do a further check of scan badness before committing to this
-  // We'll always publish a visualization, but we'll only publish on the
-  // initialpose topic once (so after that, this node will go into a state where
-  // all it does is possibly save new scans).
-  if (badness < badness_threshold_)
-  {
-    ROS_INFO("Found a good match");
-    
-    const ros::Time now = ros::Time::now();
-    gm::PoseStamped estimated_pose;
-    try {
-      tf::Pose adjusted_pose(compensateOdometry(poseMsgToTf(best_pose),
-                                                scan->header.frame_id,
-                                                scan->header.stamp, now));
-      tf::poseTFToMsg(adjusted_pose*laser_offset_, estimated_pose.pose);
-    }
-    catch (tf::TransformException& e)
-    {
-      ROS_INFO ("Discarding match due to tf exception: %s", e.what());
+    // Only proceed if there are a sufficient number of feature matches
+    if (best_num_matches<min_num_matches_)
       return;
-    }
+
+    match_pose_pub_.publish(match_poses);
+    const double badness = (*evaluator_)(*scan, best_pose);
+    ROS_INFO ("Badness is %.2f", badness);
+  
+    // Do a further check of scan badness before committing to this
+    // We'll always publish a visualization, but we'll only publish on the
+    // initialpose topic once (so after that, this node will go into a state where
+    // all it does is possibly save new scans).
+    if (badness < badness_threshold_)
+    {
+      ROS_INFO("Found a good match");
+    
+      const ros::Time now = ros::Time::now();
+      gm::PoseStamped estimated_pose;
+      try {
+        tf::Pose adjusted_pose(compensateOdometry(poseMsgToTf(best_pose),
+                                                  scan->header.frame_id,
+                                                  scan->header.stamp, now));
+        tf::poseTFToMsg(adjusted_pose*laser_offset_, estimated_pose.pose);
+      }
+      catch (tf::TransformException& e)
+      {
+        ROS_INFO ("Discarding match due to tf exception: %s", e.what());
+        return;
+      }
     
 
-    estimated_pose.header.frame_id = "/map";
-    estimated_pose.header.stamp = now;
-    pose_est_pub_.publish(estimated_pose);
+      estimated_pose.header.frame_id = "/map";
+      estimated_pose.header.stamp = now;
+      pose_est_pub_.publish(estimated_pose);
     
-      match_counter_++;
+      if (!continual_publish_)
+        publishing_loc_ = false;
       gm::PoseWithCovarianceStamped initial_pose;
       initial_pose.header.frame_id = "/map";
       initial_pose.header.stamp = scan->header.stamp;
       initial_pose.pose.pose = estimated_pose.pose;
       pose_pub_.publish(initial_pose);
+    }
   }
-}
 
 /// Compensate for base movement between scan time and current time using 
 /// odometry
@@ -444,13 +458,12 @@ tf::Transform Node::compensateOdometry (const tf::Pose& pose,
                                         const ros::Time& t1,
                                         const ros::Time& t2)
 {
-  const string FIXED_FRAME = "odom_combined";
-  tf_.waitForTransform(FIXED_FRAME, frame, t1, ros::Duration(0.1));
-  tf_.waitForTransform(FIXED_FRAME, frame, t2, ros::Duration(0.1));
+  tf_.waitForTransform(odom_frame_, frame, t1, ros::Duration(0.1));
+  tf_.waitForTransform(odom_frame_, frame, t2, ros::Duration(0.1));
 
   tf::StampedTransform current_odom, prev_odom;
-  tf_.lookupTransform(FIXED_FRAME, frame, t2, current_odom);
-  tf_.lookupTransform(FIXED_FRAME, frame, t1, prev_odom);
+  tf_.lookupTransform(odom_frame_, frame, t2, current_odom);
+  tf_.lookupTransform(odom_frame_, frame, t1, prev_odom);
   tf::Transform current_to_prev = prev_odom.inverse()*current_odom;
   return pose*current_to_prev;
 }
@@ -556,7 +569,7 @@ void Node::scanCB (sm::LaserScan::ConstPtr scan)
   
   if (dist < badness_threshold_)
     updateLocalized(scan, pose);
-  else if (match_counter_==0)
+  else if (publishing_loc_)
     updateUnlocalized(scan);
   
   }

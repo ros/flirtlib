@@ -29,4 +29,6 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
-rosbuild_download_data(https://pr.willowgarage.com/data/flirtlib/willow.tar.gz willow.tar.gz 6201cc1719fe8c99dd3948a13d6e99d0)
+#rosbuild_download_data(https://pr.willowgarage.com/data/flirtlib/willow.tar.gz willow.tar.gz 6201cc1719fe8c99dd3948a13d6e99d0)
+rosbuild_download_data(http://pr.willowgarage.com/data/flirtlib/map.pgm henry.pgm 4935bb0cfacc83c90f7f31657c5fc720)
+  

@@ -9,3 +9,4 @@
 /flirtlib_ros/msg/RotateInPlaceFeedback.msg
 /flirtlib_ros/msg/RotateInPlaceGoal.msg
 /flirtlib_ros/msg/RotateInPlaceResult.msg
+*.pgm

@@ -1,0 +1,13 @@
+<!--
+Brings up stage world based on map of Henry's house
+
+-->
+<launch>
+  <param name="/use_sim_time" value="true"/>
+  <include file="$(find navigation_stage)/move_base_config/move_base.xml"/>
+  <node name="map_server" pkg="map_server" type="map_server"
+        args="$(find wg_flirtlib)/henry_house.yaml"/>
+  <node pkg="stage" type="stageros" name="stageros"
+        args="$(find wg_flirtlib)/henry.world"/>
+  <include file="$(find navigation_stage)/move_base_config/amcl_node.xml"/>
+</launch>  
