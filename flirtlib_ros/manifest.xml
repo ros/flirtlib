@@ -8,7 +8,6 @@ ROS wrapper for FLIRTLib 3rd party package
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/flirtlib_ros</url>
-  <depend package="flirtlib"/>
   <depend package="occupancy_grid_utils"/>
   <depend package="tf"/>
   <depend package="roscpp"/>

@@ -13,6 +13,10 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(flirtlib REQUIRED flirtlib)
+include_directories(${flirtlib_include_dirs})
+
 rosbuild_genmsg()
 
 rosbuild_add_library(flirtlib_ros
@@ -22,10 +26,11 @@ rosbuild_add_library(flirtlib_ros
                      src/localization_monitor.cpp)
 target_link_libraries(flirtlib_ros tinyxml)                   
 target_link_libraries(flirtlib_ros grid_utils)
+target_link_libraries(flirtlib_ros ${flirtlib_LIBRARIES})
 
 rosbuild_add_executable(flirtlib_ros_test src/flirtlib_ros_test.cpp)
-target_link_libraries(flirtlib_ros_test feature sensorstream sensors utils)
 target_link_libraries(flirtlib_ros_test flirtlib_ros)
+target_link_libraries(flirtlib_ros_test ${flirtlib_LIBRARIES})
 
 rosbuild_add_executable(markers src/interactive_markers.cpp)
 target_link_libraries(markers tinyxml)
