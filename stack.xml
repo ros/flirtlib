@@ -10,5 +10,6 @@
   <depend stack="ros_comm" /> <!-- roscpp -->
   <depend stack="warehousewg" />
   <depend stack="visualization"/>
+  <depend stack="flirtlib"/>
 
 </stack>
