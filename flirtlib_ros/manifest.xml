@@ -17,6 +17,7 @@ ROS wrapper for FLIRTLib 3rd party package
   <depend package="sensor_msgs"/>
   <depend package="move_base_msgs"/>
   <depend package="std_srvs"/>
+  <rosdep name="flirtlib"/>
   
 </package>
 
